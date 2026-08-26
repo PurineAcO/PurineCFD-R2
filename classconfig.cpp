@@ -9,11 +9,11 @@ node_class::node_class(int number_,double x_,double y_):
     number(number_),x(x_),y(y_){}
 
 face_class::face_class(int index_,int p1_,int p2_,int c1_,int c2_):
-    index(index_){
-        mx = 0.5 * (NodeList[p1_].x + NodeList[p2_].x);
-        my = 0.5 * (NodeList[p1_].y + NodeList[p2_].y);
-        nx = NodeList[p1_].y - NodeList[p2_].y;
-        ny = NodeList[p2_].x - NodeList[p1_].x;
+    index(index_),cell_1(c1_),cell_2(c2_){
+        mid = {0.5 * (NodeList[p1_].x + NodeList[p2_].x),
+               0.5 * (NodeList[p1_].y + NodeList[p2_].y)};
+        nor = {NodeList[p1_].y - NodeList[p2_].y,
+               NodeList[p2_].x - NodeList[p1_].x};
     }
 
 cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):

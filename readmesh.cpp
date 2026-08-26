@@ -3,20 +3,20 @@
 #include <iostream>
 #include <ostream>
 #include "classconfig.h"
+#include "config.h"
 
-int main(int argc,char* argv[]){
+int readmesh(const char* path){
 
-    const char* path = (argc > 1) ? argv[1] : "mesh/tunnel.txt";
     FILE* fp = fopen(path, "rb");
     if(fp == NULL){std::cerr << "Cannot open the mesh" << std::endl;return 1;}
 
-    int cell_num,edge_num,node_num;
-    if(fscanf(fp,"%d %d %d",&node_num,&edge_num,&cell_num) != 3){
+    int node_num;
+    if(fscanf(fp,"%d %d %d",&node_num,&cc::face_num,&cc::cell_num) != 3){
         std::cerr << "Not Correct Mesh" << std::endl;return 1;
     }
     std::cout << "Node Nums:" << node_num << std::endl;
-    std::cout << "Edge Nums:" << edge_num << std::endl;
-    std::cout << "Cell Nums:" << cell_num << std::endl;
+    std::cout << "Edge Nums:" << cc::face_num << std::endl;
+    std::cout << "Cell Nums:" << cc::cell_num << std::endl;
 
     char line[100];fgets(line,sizeof(line),fp); // 吸收换行符
     
@@ -37,19 +37,20 @@ int main(int argc,char* argv[]){
         cc::NodeList.emplace_back(number,x,y);
     }
 
-    printf("Node Read OK\n");
-
+    if (cc::NodeList.size() == (size_t)node_num){printf("Node Read OK\n");}
+    else{std::cerr << "Node Wrong Nums" << std::endl;}
+    
     fgets(line,sizeof(line),fp); // 吸收换行符
     fgets(line,sizeof(line),fp); // 吸收(end node),没有这一行一般不报错.
     if(fgets(line,sizeof(line),fp) == NULL){
         std::cerr << "No Edge Line" << std::endl;return 1;
     }
-    if(strncmp(line,"(edge)",6)){
-        std::cerr << "Bad Format for Edge" << std::endl;
+    if(strncmp(line,"(edge)",6) != 0){
+        std::cerr << "Bad Format for Edge" << std::endl;return 1;
     }
 
-    cc::FaceList.reserve(edge_num);
-    for(int i=1;i<=edge_num;i++){
+    cc::FaceList.reserve(cc::face_num);
+    for(int i=1;i<=cc::face_num;i++){
         int index,p1,p2,c1,c2;
         if(fscanf(fp,"%d%d%d%d%d",&index,&p1,&p2,&c1,&c2) != 5){
             std::cerr << "Edge data read error at line " << i << std::endl;return 1;
@@ -58,19 +59,20 @@ int main(int argc,char* argv[]){
         cc::FaceList.emplace_back(index,p1,p2,c1,c2);
     }
 
-    printf("Edge Read OK\n");
+    if(cc::FaceList.size() == (size_t)cc::face_num){printf("Edge Read OK\n");}
+    else{std::cerr << "Edge Wrong Nums" << std::endl;return 1;}
 
     fgets(line,sizeof(line),fp); // 吸收换行符
     fgets(line,sizeof(line),fp); // 吸收(end edge),没有这一行一般不报错.
     if(fgets(line,sizeof(line),fp) == NULL){
         std::cerr << "No Cell Line" << std::endl;return 1;
     }
-    if(strncmp(line,"(cell)",6)){
-        std::cerr << "Bad Format for Cell" << std::endl;
+    if(strncmp(line,"(cell)",6) != 0){
+        std::cerr << "Bad Format for Cell" << std::endl;return 1;
     }
 
-    cc::CellList.reserve(cell_num);
-    for(int i=1;i<=cell_num;i++){
+    cc::CellList.reserve(cc::cell_num);
+    for(int i=1;i<=cc::cell_num;i++){
         if(fgets(line,sizeof(line),fp) == NULL){
             std::cerr << "Cell data read error at line " << i << std::endl;return 1;
         }
@@ -82,9 +84,10 @@ int main(int argc,char* argv[]){
         cc::CellList.emplace_back(index, f1, f2, f3, f4, n-1);
     }
 
-    printf("Cell Read OK\n");
+    if(cc::CellList.size() == (size_t)cc::cell_num){printf("Cell Read OK\n");}
+    else {std::cerr << "Cell Wrong Nums" << std::endl;}
+
     fclose(fp);
     
     return 0;
-    
 }
