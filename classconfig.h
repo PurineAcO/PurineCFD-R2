@@ -18,14 +18,15 @@ struct node_class{
 };
 
 struct face_class{
-    int index = 0; // 面编号
+    int index = 0;  // 面编号
+    short type = 0; // 面类型
     std::pair<double,double> mid = {0.0,0.0};
     std::pair<double,double> nor = {0.0,0.0};
     int cell_1 = -1; int cell_2 = -1;
     face_class() = default;
 
     // 构造器:形成边,法向量和中点均在此构造完毕.
-    face_class(int index_,int p1_,int p2_,int c1_,int c2_);
+    face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);
 };
 
 struct cell_class{
