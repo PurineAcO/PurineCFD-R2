@@ -25,4 +25,10 @@ namespace cc {
 
     // 判断面的类型
     short get_facetype(const char* face_std_name);
+
+    // 链接一个面
+    face_class* link_face(int number);
+
+    // 链接一个网格
+    cell_class* link_cell(int number);
 }

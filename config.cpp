@@ -29,4 +29,11 @@ short get_facetype(const char *face_std_name){
     else {return 697;}
 }
 
+cc::face_class* link_face(int number){return &gotoface(number);}
+
+cc::cell_class* link_cell(int number){
+    if(number == 0){return nullptr;} // 有些边是边界不邻接网格,此时暂时返回空指针.
+    return &gotocell(number);}
+
+
 }

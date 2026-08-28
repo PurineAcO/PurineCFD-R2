@@ -8,7 +8,7 @@
 #include "classconfig.h"
 #include "config.h"
 
-int readmesh(const char* path){
+short readmesh(const char* path){
 
     FILE* fp = fopen(path, "rb");
     if(fp == NULL){std::cerr << "Cannot open the mesh" << std::endl;return 1;}
@@ -133,10 +133,27 @@ int readmesh(const char* path){
             std::cerr << "Cell order broken at position " << i << std::endl;return 1;
         }
     }
-    
+
     printf("Cell Read OK\n");
 
     fclose(fp);
     
+    return 0;
+}
+
+short linkmesh(){
+
+    for(cc::cell_class& cell: cc::CellList){
+        for(int i = 0; i<cell.ecnt ; i++){
+            cell.nei[i] = cc::link_face(cell.face[i]);
+        }
+    }
+
+    for(cc::face_class& face : cc::FaceList){
+        face.nei[0] = cc::link_cell(face.cell_1);
+        face.nei[1] = cc::link_cell(face.cell_2);
+    }
+
+    printf("Link Cell and Face OK \n");
     return 0;
 }

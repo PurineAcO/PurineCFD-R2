@@ -1,1 +1,3 @@
-int readmesh(const char* path);
+short readmesh(const char* path);
+
+short linkmesh();

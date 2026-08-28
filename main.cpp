@@ -4,5 +4,6 @@
 
 int main(){
     if(readmesh(cc::path)){return 1;}
+    if(linkmesh()){return 1;}
     return 0;
 }
