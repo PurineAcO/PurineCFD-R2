@@ -15,7 +15,10 @@ namespace cc {
     inline const short WALL = 1;                      // 无滑移壁面
     inline const short POL = 2;                       // 压力出口
     inline const short VIL = 3;                       // 速度入口
-    inline const short FAR = 4;                       // 压力远场  
+    inline const short FAR = 4;                       // 压力远场
+
+    // 临时的几何参数
+    inline const double H = 2.4;                      // 方腔高度
 
     // 安全的网格访问
     cell_class& gotocell(int number);

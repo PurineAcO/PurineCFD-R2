@@ -9,7 +9,7 @@ node_class::node_class(int number_,double x_,double y_):
     number(number_),x(x_),y(y_){}
 
 face_class::face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_):
-    index(index_),type(type_),cell_1(c1_),cell_2(c2_){
+    index(index_),type(type_),node({p1_,p2_}),cell_1(c1_),cell_2(c2_){
         mid = {0.5 * (NodeList[p1_].x + NodeList[p2_].x),
                0.5 * (NodeList[p1_].y + NodeList[p2_].y)};
         nor = {NodeList[p1_].y - NodeList[p2_].y,
