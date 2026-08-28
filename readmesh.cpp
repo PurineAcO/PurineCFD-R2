@@ -152,8 +152,17 @@ short linkmesh(){
     for(cc::face_class& face : cc::FaceList){
         face.nei[0] = cc::link_cell(face.cell_1);
         face.nei[1] = cc::link_cell(face.cell_2);
+        if(face.type == cc::WALL){
+            cc::WallFaces.push_back(&face);
+        }else if(face.type == cc::VIL){
+            cc::VILFaces.push_back(&face);
+        }else if(face.type == cc::POL){
+            cc::POLFaces.push_back(&face);
+        }
     }
 
     printf("Link Cell and Face OK \n");
+    printf("Wall:%zu, Inlet:%zu, Outlet:%zu\n",
+           cc::WallFaces.size(), cc::VILFaces.size(), cc::POLFaces.size());
     return 0;
 }

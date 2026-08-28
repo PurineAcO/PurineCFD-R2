@@ -3,13 +3,12 @@
 #include <cstdio>
 #include <utility>
 #include "classconfig.h"
-#include "config.h"
 
 static bool ifin_node(int num[], int number) {
   for (int i = 0; i < 4; i++) {if (number == num[i]) {return true;}}return false;
 }
 
-static void findnode(cc::cell_class &cell) {
+void findnode(cc::cell_class &cell) {
   short place = 0;
   for (int i = 0; i < cell.ecnt; i++) {
     if (!ifin_node(cell.node, cell.nei[i]->node.first - 1)) {
@@ -59,8 +58,8 @@ void center(cc::cell_class &cell){
         return;
     }
     const auto& p3 = cc::NodeList[cell.node[3]];
-    double S[4];
-    std::pair<double,double> G[4];
+    double S[4];std::pair<double,double> G[4];
+
     S[0] = triangle_area(p0.x,p0.y,p1.x,p1.y,p2.x,p2.y);
     G[0] = triangle_center(p0.x,p0.y,p1.x,p1.y,p2.x,p2.y);
     S[1] = triangle_area(p0.x,p0.y,p1.x,p1.y,p3.x,p3.y);
@@ -70,24 +69,11 @@ void center(cc::cell_class &cell){
     S[3] = triangle_area(p1.x,p1.y,p2.x,p2.y,p3.x,p3.y);
     G[3] = triangle_center(p1.x,p1.y,p2.x,p2.y,p3.x,p3.y);
 
-    double sum = S[0]+S[1]+S[2]+S[3];
-    if(sum > 0.0){
-        cell.center = {(S[0]*G[0].first  + S[1]*G[1].first  + S[2]*G[2].first  + S[3]*G[3].first)/sum,
-                       (S[0]*G[0].second + S[1]*G[1].second + S[2]*G[2].second + S[3]*G[3].second)/sum};
-    }
+    cell.center = {(S[0]*G[0].first  + S[1]*G[1].first  + S[2]*G[2].first  + S[3]*G[3].first)/(S[0]+S[1]+S[2]+S[3]),
+                    (S[0]*G[0].second + S[1]*G[1].second + S[2]*G[2].second + S[3]*G[3].second)/(S[0]+S[1]+S[2]+S[3])};
+    
 }
 
 void walldistance_alternative(cc::cell_class &cell,double H){
     cell.sad = cell.center.second < (H - cell.center.second) ? cell.center.second : H - cell.center.second;
-}
-
-void geometry(){
-    freopen("test.txt","w",stdout);
-    for(cc::cell_class& cell:cc::CellList){
-        findnode(cell);
-        volume(cell);
-        center(cell);
-        walldistance_alternative(cell,cc::H);
-        printf("%f\n",cell.sad);
-    }
 }

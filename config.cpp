@@ -35,5 +35,11 @@ cc::cell_class* link_cell(int number){
     if(number == 0){return nullptr;} // 有些边是边界不邻接网格,此时暂时返回空指针.
     return &gotocell(number);}
 
+}
 
+// 用户自定义部分
+
+void DO_BEFORE_SOLVE(){
+    // 边界条件
+    cc::Ma = 0.3;cc::T = 300;cc::Re = 3e6;cc::AOA = 0;cc::p = 1e5;
 }

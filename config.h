@@ -1,14 +1,16 @@
 #pragma once
 
 #include "classconfig.h"
+
 namespace cc {
 
     // 求解器设置
-    inline int cell_num = 0;                        // 网格总数
-    inline int face_num = 0;                        // 面总数
-    inline int type_total = 0;                      // 边界条件类型总数
-    inline const int HALO = 2;                      // HALO网格层数(可能弃用)
-    inline const char* path = "mesh/tunnel.txt";    // 网格文件位置
+    inline int cell_num = 0;                          // 网格总数
+    inline int face_num = 0;                          // 面总数
+    inline int type_total = 0;                        // 边界条件类型总数
+    inline const int HALO = 2;                        // HALO网格层数(可能弃用)
+    inline const char* meshpath = "mesh/tunnel.txt";  // 网格文件位置
+    inline const char* testpath = "test.txt";         // 测试文件位置
 
     // 网格和边界条件约定
     inline const short INTER = 0;                     // 内部面
@@ -19,6 +21,20 @@ namespace cc {
 
     // 临时的几何参数
     inline const double H = 2.4;                      // 方腔高度
+
+    // 流动物理条件,定义在了config.cpp里
+    extern double Ma;                                 // 来流马赫数
+    extern double Re;                                 // 来流雷诺数
+    extern double T;                                  // 来流温度
+    extern double AOA;                                // 来流迎角
+    extern double p;                                  // 出口压力
+
+    // 物理学常数
+    inline const double gamma = 1.4;
+    inline const double R = 287.05;
+    inline const double mu_ref = 1.716e-5;
+    inline const double T_ref = 273.15;
+    inline const double T_s = 110.4;
 
     // 安全的网格访问
     cell_class& gotocell(int number);
@@ -35,3 +51,6 @@ namespace cc {
     // 链接一个网格
     cell_class* link_cell(int number);
 }
+
+// 第一处函数钩子:在求解前
+void DO_BEFORE_SOLVE();
