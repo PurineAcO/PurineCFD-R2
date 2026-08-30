@@ -1,31 +1,13 @@
 #pragma once
 #include <utility>
 #include <vector>
+#include "config.h"
 
 namespace cc {
 
 struct cell_class;
 struct face_class;
 struct node_class;
-
-struct physics{
-
-    // 重要变量
-    double rho; // 密度
-    double u;   // u速度
-    double v;   // v速度
-    double T;   // 温度
-
-    // 衍生物
-    double a;   // 声速
-    double mu;  // 空气粘度
-    double p;   // 压强
-
-};
-
-struct SA{
-    double miubl; // 工作变量miubl
-};
 
 struct node_class{
     int number = 0; // 节点编号
@@ -45,8 +27,9 @@ struct face_class{
     std::pair<double,double> nor = {0.0,0.0};  // 面法向(未外化)
     int cell_1 = -1; int cell_2 = -1;               // 邻接网格编号(临时使用,常用指针)
     cell_class* nei[2] = {};                        // 邻接网格指针
-
-
+    physics phy;
+    TUR tur;
+    
     face_class() = default;
     // 构造器:形成边,法向量和中点均在此构造完毕.
     face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);
@@ -61,8 +44,8 @@ struct cell_class{
     double vol;                                     // 网格体积
     std::pair<double,double> center ;               // 网格中心
     double sad;                                     // 用于S-A湍流模型的壁面距离
-    struct physics phy;                             // 流动变量结构体
-    struct SA tur;                                  // 湍流模型字典
+    physics phy;                                    // 流动变量结构体
+    TUR tur;                                        // 湍流模型字典
 
     cell_class() = default;
     // 构造器:形成网格
@@ -75,5 +58,20 @@ inline std::vector<face_class> FaceList;     // 邻接边
 inline std::vector<face_class*> WallFaces;   // 壁面
 inline std::vector<face_class*> VILFaces;    // 速度入口
 inline std::vector<face_class*> POLFaces;    // 压力出口
+
+// 安全的网格访问
+cell_class& gotocell(int number);
+
+// 安全的面访问
+face_class& gotoface(int number);
+
+// 判断面的类型
+short get_facetype(const char* face_std_name);
+
+// 链接一个面
+face_class* link_face(int number);
+
+// 链接一个网格
+cell_class* link_cell(int number);
 
 }

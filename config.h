@@ -1,8 +1,27 @@
 #pragma once
 
-#include "classconfig.h"
-
 namespace cc {
+
+    struct physics{
+
+    // 重要变量
+    double rho; // 密度
+    double u;   // u速度
+    double v;   // v速度
+    double T;   // 温度
+
+    // 衍生物
+    double a;   // 声速
+    double mu;  // 空气粘度
+    double p;   // 压强
+
+    };// 物理量
+
+    struct SA{
+        double miubl; // 工作变量miubl
+    };// S-A湍流变量
+
+    using TUR = SA ;  // 在此修改湍流模型
 
     // 求解器设置
     inline int cell_num = 0;                          // 网格总数
@@ -22,12 +41,16 @@ namespace cc {
     // 临时的几何参数
     inline const double H = 2.4;                      // 方腔高度
 
-    // 流动物理条件,定义在了config.cpp里
-    extern double Ma;                                 // 来流马赫数
-    extern double Re;                                 // 来流雷诺数
-    extern double T;                                  // 来流温度
-    extern double AOA;                                // 来流迎角
-    extern double p;                                  // 出口压力
+    // 流动物理条件
+    inline struct VIL_condition{double u;double v;            // 速度分量
+                                double T;                     // 入口温度,必须是静温
+                                double p;                     // 来流静压,亚声速不适用
+                                TUR tur;                      // 湍流模型
+                                }VIL_DEFINE;   // 速度入口
+    inline struct POL_condition{double p;                    // 出口静压
+                                double T;                    // 出口温度,必须是总温
+                                TUR tur;                      // 湍流模型
+                                }POL_DEFINE;   // 压力出口
 
     // 物理学常数
     inline const double gamma = 1.4;
@@ -36,21 +59,5 @@ namespace cc {
     inline const double T_ref = 273.15;
     inline const double T_s = 110.4;
 
-    // 安全的网格访问
-    cell_class& gotocell(int number);
 
-    // 安全的面访问
-    face_class& gotoface(int number);
-
-    // 判断面的类型
-    short get_facetype(const char* face_std_name);
-
-    // 链接一个面
-    face_class* link_face(int number);
-
-    // 链接一个网格
-    cell_class* link_cell(int number);
 }
-
-// 第一处函数钩子:在求解前
-void DO_BEFORE_SOLVE();

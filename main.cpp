@@ -4,6 +4,7 @@
 #include "geometry.h"
 #include "initialize.h"
 #include "config.h"
+#include "udf.hpp"
 
 int main(){
 
@@ -23,16 +24,11 @@ int main(){
         // printf("%f\n",cell.sad);
     }
 
-    // 第一处函数钩子
-    DO_BEFORE_SOLVE();
+    // 第一处函数钩子:定义边界条件
+    DEFINE_BOUNDARY();
 
     // 标准初始化
-    for(cc::cell_class& cell: cc::CellList){
-        std_initialize(cell);
-    }
-
-
-
+    std_initialize();
 
     return 0;
 }
