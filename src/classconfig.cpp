@@ -12,10 +12,10 @@ node_class::node_class(int number_,double x_,double y_):
 
 face_class::face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_):
     index(index_),type(type_),node({p1_,p2_}),cell_1(c1_),cell_2(c2_){
-        mid = {0.5 * (NodeList[p1_].x + NodeList[p2_].x),
-               0.5 * (NodeList[p1_].y + NodeList[p2_].y)};
-        nor = {NodeList[p1_].y - NodeList[p2_].y,
-               NodeList[p2_].x - NodeList[p1_].x};
+        mid = {0.5 * (NodeList[p1_-1].x + NodeList[p2_-1].x),
+               0.5 * (NodeList[p1_-1].y + NodeList[p2_-1].y)};
+        nor = {NodeList[p1_-1].y - NodeList[p2_-1].y,
+               NodeList[p2_-1].x - NodeList[p1_-1].x};
     }
 
 cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
@@ -29,6 +29,22 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
 void cell_class::form_conservative(){
     conser = {phy.rho,phy.rho*phy.u,phy.rho*phy.v,phy.rho*phy.e,phy.rho*tur.miubl};
 }
+
+void cell_class::face_normal_out(){
+    for(int i=0;i<ecnt;i++){
+        fnorm[i] = (nei[i]->nor.x * (nei[i]->mid.x - center.x) + nei[i]->nor.y * (nei[i]->mid.y - center.y)) > 0; 
+    }
+}
+
+void face_class::face_physic_mid(){
+    if(type == INTER){
+        phy.u = 0.5 * (nei[0]->phy.u + nei[1]->phy.u);
+        phy.v = 0.5 * (nei[0]->phy.v + nei[1]->phy.v);
+        phy.T = 0.5 * (nei[0]->phy.T + nei[1]->phy.T);
+        tur.miubl = 0.5 * (nei[0]->tur.miubl + nei[1]->tur.miubl);
+    }
+}
+
 
 cell_class& gotocell(int number){
     if(number < 1 || number > cc::cell_num){

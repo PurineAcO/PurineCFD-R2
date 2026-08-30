@@ -5,6 +5,10 @@ namespace cc {
     inline double total_time = 0.0;               // 仿真总时间
     inline long long step = 0;                    // 仿真总步数
 
+    
+    struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};// 二维整数数对
+    struct vec2{double x = 0.0;double y = 0.0;vec2() = default;vec2(double x_,double y_):x(x_),y(y_){}};// 二维double数对
+
     struct physics{
 
     // 重要变量
@@ -13,16 +17,23 @@ namespace cc {
     double v;   // v速度
     double T;   // 温度
 
-    // 衍生物
+    // 不重要物理量
     double a;   // 声速
     double mu;  // 空气粘度
     double p;   // 压强
     double e;   // 比能量
 
+    // 梯度
+    vec2 rhograd;   // 密度梯度
+    vec2 ugrad;     // u梯度
+    vec2 vgrad;     // v梯度
+    vec2 Tgrad;     // T梯度
+
     };// 物理量
 
     struct SA{
-        double miubl; // 工作变量miubl
+        double miubl;       // 工作变量miubl
+        vec2 miublgrad;     // miubl梯度
     };// S-A湍流变量
 
     using TUR = SA ;  // 在此修改湍流模型
@@ -63,6 +74,7 @@ namespace cc {
     inline const double mu_ref = 1.716e-5;
     inline const double T_ref = 273.15;
     inline const double T_s = 110.4;
+    inline const double Cp = 1004.675;
 
 
 }

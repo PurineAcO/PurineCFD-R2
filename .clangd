@@ -1,8 +1,0 @@
-# clangd 配置: 让 IDE 语言服务器能找到 head/ 目录下的头文件
-CompileFlags:
-  Compiler: clang++
-  Add:
-    - "-std=c++17"
-    - "-Ihead"
-    - "-Wall"
-    - "-Wextra"

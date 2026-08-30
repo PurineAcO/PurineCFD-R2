@@ -74,5 +74,5 @@ void center(cc::cell_class &cell){
 }
 
 void walldistance_alternative(cc::cell_class &cell,double H){
-    cell.sad = cell.center.y < (H - cell.center.y) ? cell.center.y : H - cell.center.y;
+  cell.sad = cell.center.y < (H - cell.center.y) ? cell.center.y : H - cell.center.y;
 }

@@ -22,12 +22,13 @@ int main(){
         center(cell);
         walldistance_alternative(cell,cc::H);
         // printf("%f\n",cell.sad);
+        cell.face_normal_out();
     }
 
     // 第一处函数钩子:定义边界条件
     DEFINE_BOUNDARY();
 
-    // 标准初始化
+    // 初始化
     std_initialize();
 
     return 0;

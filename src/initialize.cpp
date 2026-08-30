@@ -2,6 +2,7 @@
 #include "classconfig.h"
 #include "config.h"
 #include "physic.h"
+#include "boundary.h"
 #include <cstdio>
 
 void std_initialize(){
@@ -18,4 +19,7 @@ void std_initialize(){
         cell.phy.e = get_energy(cell.phy);
     }
     printf("STD Initialization OK!,u is:%f",cc::CellList[0].phy.u);
+    wall_boundary();
+    velocity_inlet_boundary();
+    pressure_outlet_boundary();
 }

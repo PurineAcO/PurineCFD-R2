@@ -1,5 +1,4 @@
 #pragma once
-#include <utility>
 #include <vector>
 #include "config.h"
 
@@ -8,22 +7,6 @@ namespace cc {
 struct cell_class;
 struct face_class;
 struct node_class;
-
-// 二维整数数对
-struct ivec2{
-    int x = 0;
-    int y = 0;
-    ivec2() = default;
-    ivec2(int x_,int y_):x(x_),y(y_){}
-};
-
-// 二维double数对
-struct vec2{
-    double x = 0.0;
-    double y = 0.0;
-    vec2() = default;
-    vec2(double x_,double y_):x(x_),y(y_){}
-};
 
 struct node_class{
     int number = 0; // 节点编号
@@ -46,9 +29,13 @@ struct face_class{
     physics phy;
     TUR tur;
 
-    face_class() = default;
+    
     // 构造器:形成边,法向量和中点均在此构造完毕.
+    face_class() = default;
     face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);
+
+    // 中心差分计算面上物理量
+    void face_physic_mid();
 };
 
 struct cell_class{
@@ -58,6 +45,7 @@ struct cell_class{
     int ecnt = 0;                                   // 网格边数
     int face[4] = {};                               // 网格邻接边编号
     int node[4] = {-1,-1,-1,-1};    // 网格邻接点编号
+    bool fnorm[4] = {};                             // 网格邻接边法向量标记
     face_class* nei[4] = {};                        // 网格邻接边指针
     double vol;                                     // 网格体积
     vec2 center;                                    // 网格中心
@@ -66,12 +54,16 @@ struct cell_class{
     double sad;                                     // 用于S-A湍流模型的壁面距离
     physics phy;                                    // 流动变量结构体
     TUR tur;                                        // 湍流模型字典
-    std::vector<double> conser;                      // 守恒量
+    std::vector<double> conser;                     // 守恒量
 
-    cell_class() = default;
     // 构造器:形成网格
+    cell_class() = default;
     cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_);
+
+    // 形成守恒量
     void form_conservative();
+    // 判断邻接面的法向
+    void face_normal_out();
 };
 
 inline std::vector<node_class> NodeList;     // 节点
