@@ -2,6 +2,9 @@
 
 namespace cc {
 
+    inline double total_time = 0.0;               // 仿真总时间
+    inline long long step = 0;                    // 仿真总步数
+
     struct physics{
 
     // 重要变量
@@ -14,6 +17,7 @@ namespace cc {
     double a;   // 声速
     double mu;  // 空气粘度
     double p;   // 压强
+    double e;   // 比能量
 
     };// 物理量
 
@@ -30,6 +34,7 @@ namespace cc {
     inline const int HALO = 2;                        // HALO网格层数(可能弃用)
     inline const char* meshpath = "mesh/tunnel.txt";  // 网格文件位置
     inline const char* testpath = "test.txt";         // 测试文件位置
+    inline const char* turbulence = "SA";             // 湍流模型名称
 
     // 网格和边界条件约定
     inline const short INTER = 0;                     // 内部面
