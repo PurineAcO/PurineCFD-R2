@@ -52,6 +52,7 @@ int main(){
             cell.form_conservative();         // 建立守恒量
             convect_JST(cell);              // 建立对流项
             SA::SA_diffusion(cell);         // 建立扩散项
+            SA::SA_source(cell);            // 建立源项
         }
 
     return 0;

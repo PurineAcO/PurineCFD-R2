@@ -18,5 +18,5 @@ namespace SA {
     inline constexpr double Prt = 0.9;
 
     void SA_diffusion(cc::cell_class& cell);
-
+    void SA_source(cc::cell_class& cell);
 }
