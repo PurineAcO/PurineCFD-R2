@@ -2,6 +2,15 @@
 
 inline void DEFINE_BOUNDARY();
 
+inline void BEFORE_CONFIG();
+
+// 前期设置
+void BEFORE_CONFIG(){
+    cc::meshpath = "mesh/tunnel.txt";
+    cc::testpath = "test.txt";
+    cc::turbulence = "SA";
+}
+
 // 定义边界条件
 void DEFINE_BOUNDARY(){
     cc::SA tur_POL = {};

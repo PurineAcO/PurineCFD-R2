@@ -33,7 +33,7 @@ void cell_class::form_conservative(){
 
 void cell_class::face_normal_out(){
     for(int i=0;i<ecnt;i++){
-        fnorm[i] = (nei[i]->nor.x * (nei[i]->mid.x - center.x) + nei[i]->nor.y * (nei[i]->mid.y - center.y)) > 0; 
+        fnorm[i] = dot(nei[i]->nor, {nei[i]->mid.x - center.x, nei[i]->mid.y - center.y}) > 0; 
     }
 }
 
@@ -50,6 +50,19 @@ void face_class::face_physic_mid(){
         phy.v = 0.5 * (nei[0]->phy.v + nei[1]->phy.v);
         phy.T = 0.5 * (nei[0]->phy.T + nei[1]->phy.T);
         tur.miubl = 0.5 * (nei[0]->tur.miubl + nei[1]->tur.miubl);
+        phy.rhograd   = 0.5 * (nei[0]->phy.rhograd   + nei[1]->phy.rhograd);
+        phy.ugrad     = 0.5 * (nei[0]->phy.ugrad     + nei[1]->phy.ugrad);
+        phy.vgrad     = 0.5 * (nei[0]->phy.vgrad     + nei[1]->phy.vgrad);
+        phy.Tgrad     = 0.5 * (nei[0]->phy.Tgrad     + nei[1]->phy.Tgrad);
+        tur.miublgrad = 0.5 * (nei[0]->tur.miublgrad + nei[1]->tur.miublgrad);
+    }
+    else if(type == VIL){
+        cell_class* inner = nei[0] ? nei[0] : nei[1];
+        phy.ugrad = inner->phy.ugrad;phy.vgrad = inner->phy.vgrad;phy.Tgrad = inner->phy.Tgrad;
+    }
+    else if(type == WALL){
+        cell_class* inner = nei[0] ? nei[0]:nei[1];
+        phy.ugrad = inner->phy.ugrad;phy.vgrad = inner->phy.vgrad;tur.miublgrad = inner->tur.miublgrad;
     }
 }
 

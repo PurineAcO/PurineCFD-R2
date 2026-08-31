@@ -12,6 +12,9 @@
 
 int main(){
 
+    // 第0处函数钩子:定义宏
+    BEFORE_CONFIG(); 
+
     // 测试输出文件路径
     freopen(cc::testpath,"w",stdout);
 
@@ -29,7 +32,7 @@ int main(){
         cell.face_normal_out();
     }
 
-    // 第一处函数钩子:定义边界条件
+    // 第1处函数钩子:定义边界条件
     DEFINE_BOUNDARY();
 
     // 初始化
@@ -43,7 +46,7 @@ int main(){
         wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();    // 三个边界条件
         for(cc::cell_class& cell : cc::CellList){
             green_gauss_cell_based(cell);   // 建立梯度
-            interpolate_mid(cell);          // 做面上的重构(基本量)
+            interpolate_mid(cell);          // 做面上的重构(基本量),含边界
             cell.form_physic();               // 建立cell的全部物理量
             cell.form_conservative();         // 建立守恒量
             convect_JST(cell);              // 建立对流项            

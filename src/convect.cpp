@@ -17,6 +17,6 @@ void convect_JST(cc::cell_class &cell){
                                 face->phy.rho*face->phy.v*face->phy.v + face->phy.rho*cc::R*face->phy.T,
                                 face->phy.rho*face->phy.v*(cc::Cp*face->phy.T + 0.5*(face->phy.u*face->phy.u+face->phy.v*face->phy.v)),
                                 face->phy.rho*face->phy.v*face->tur.miubl};
-        for(int j=0;j<=4;j++){cell.convect[j] += F[j]*outer*face->nor.x + G[j]*outer*face->nor.y;}
+        for(int j=0;j<=4;j++){cell.convect[j] += outer * cc::dot(cc::vec2{F[j], G[j]}, face->nor);}
     }
 }

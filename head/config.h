@@ -7,7 +7,24 @@ namespace cc {
 
     
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};// 二维整数数对
-    struct vec2{double x = 0.0;double y = 0.0;vec2() = default;vec2(double x_,double y_):x(x_),y(y_){}};// 二维double数对
+    struct vec2{
+        double x = 0.0;
+        double y = 0.0;
+        vec2() = default;
+        vec2(double x_,double y_):x(x_),y(y_){}
+        vec2& operator+=(const vec2& o){ x += o.x; y += o.y; return *this; }
+        vec2& operator*=(double s)     { x *= s;   y *= s;   return *this; }
+    };// 二维double数对
+
+    // 向量加法
+    inline vec2 operator+(vec2 a, const vec2& b){ return a += b; }
+
+    // 标量乘法(两侧均可: vec2*s 和 s*vec2)
+    inline vec2 operator*(vec2 a, double s){ return a *= s; }
+    inline vec2 operator*(double s, vec2 a){ return a *= s; }
+
+    // 点积
+    inline double dot(const vec2& a, const vec2& b){ return a.x*b.x + a.y*b.y; }
 
     struct physics{
 
@@ -48,11 +65,11 @@ namespace cc {
     inline const char* turbulence = "SA";             // 湍流模型名称
 
     // 网格和边界条件约定
-    inline const short INTER = 0;                     // 内部面
-    inline const short WALL = 1;                      // 无滑移壁面
-    inline const short POL = 2;                       // 压力出口
-    inline const short VIL = 3;                       // 速度入口
-    inline const short FAR = 4;                       // 压力远场
+    inline constexpr short INTER = 0;                     // 内部面
+    inline constexpr short WALL = 1;                      // 无滑移壁面
+    inline constexpr short POL = 2;                       // 压力出口
+    inline constexpr short VIL = 3;                       // 速度入口
+    inline constexpr short FAR = 4;                       // 压力远场
 
     // 临时的几何参数
     inline const double H = 2.4;                      // 方腔高度
@@ -69,13 +86,13 @@ namespace cc {
                                 }POL_DEFINE;   // 压力出口
 
     // 物理学常数
-    inline const double gamma = 1.4;
-    inline const double R = 287.05;
-    inline const double mu_ref = 1.716e-5;
-    inline const double T_ref = 273.15;
-    inline const double T_s = 110.4;
-    inline const double Cp = 1004.675;
-    inline const double Cv = 717.645;
+    inline constexpr double gamma = 1.4;
+    inline constexpr double R = 287.05;
+    inline constexpr double mu_ref = 1.716e-5;
+    inline constexpr double T_ref = 273.15;
+    inline constexpr double T_s = 110.4;
+    inline constexpr double Cp = 1004.675;
+    inline constexpr double Cv = 717.645;
 
 
 }
