@@ -17,9 +17,7 @@ void std_initialize(){
         cell.phy.a = get_sonic_velocity(cell.phy.T);
         cell.tur.miubl = cell.phy.mu/cell.phy.rho * 0.1;
         cell.phy.e = get_energy(cell.phy);
+        for(int j=0;j<cell.ecnt;j++){cell.nei[j]->face_physic_mid();}  // 必须建构这个量,否则无法计算梯度
     }
     printf("STD Initialization OK!,u is:%f",cc::CellList[0].phy.u);
-    wall_boundary();
-    velocity_inlet_boundary();
-    pressure_outlet_boundary();
 }

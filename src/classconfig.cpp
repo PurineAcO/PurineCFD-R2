@@ -23,7 +23,8 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
         if(ecnt == 3){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = 0;}
         else if(ecnt == 4){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = f4_;}
         else {std::cerr << "Not Supported Cell Type in" << index << std::endl;}
-        if(strncmp(cc::turbulence,"SA", 2) == 0){conser.reserve(5);} 
+        if(strncmp(cc::turbulence,"SA", 2) == 0){
+            conser.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);dissipation.reserve(5);} 
     }
     
 void cell_class::form_conservative(){
@@ -36,8 +37,15 @@ void cell_class::face_normal_out(){
     }
 }
 
+void cell_class::form_physic(){
+    phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
+    phy.p = cc::R * phy.rho * phy.T;
+}
+
+
 void face_class::face_physic_mid(){
     if(type == INTER){
+        phy.rho = 0.5 * (nei[0]->phy.rho + nei[1]->phy.rho);
         phy.u = 0.5 * (nei[0]->phy.u + nei[1]->phy.u);
         phy.v = 0.5 * (nei[0]->phy.v + nei[1]->phy.v);
         phy.T = 0.5 * (nei[0]->phy.T + nei[1]->phy.T);

@@ -55,11 +55,17 @@ struct cell_class{
     physics phy;                                    // 流动变量结构体
     TUR tur;                                        // 湍流模型字典
     std::vector<double> conser;                     // 守恒量
+    std::vector<double> convect;                    // 对流项
+    std::vector<double> diffusion;                  // 扩散项
+    std::vector<double> source;                     // 源项
+    std::vector<double> dissipation;                // 耗散
 
     // 构造器:形成网格
     cell_class() = default;
     cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_);
 
+    // 形成全部物理量
+    void form_physic();
     // 形成守恒量
     void form_conservative();
     // 判断邻接面的法向

@@ -75,6 +75,7 @@ namespace cc {
     inline const double T_ref = 273.15;
     inline const double T_s = 110.4;
     inline const double Cp = 1004.675;
+    inline const double Cv = 717.645;
 
 
 }
