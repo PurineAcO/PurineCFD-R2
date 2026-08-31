@@ -8,12 +8,13 @@
 #include "convect.h"
 #include "interpolat.h"
 #include "grad.h"
+#include "SA.h"
 #include "udf.hpp"
 
 int main(){
 
     // 第0处函数钩子:定义宏
-    BEFORE_CONFIG(); 
+    BEFORE_CONFIG();
 
     // 测试输出文件路径
     freopen(cc::testpath,"w",stdout);
@@ -21,7 +22,7 @@ int main(){
     // 网格读取和生成期
     if(readmesh(cc::meshpath)){return 1;}
     if(linkmesh()){return 1;}
-    
+
     // 网格几何的生成期
     for(cc::cell_class& cell: cc::CellList){
         findnode(cell);
@@ -49,7 +50,8 @@ int main(){
             interpolate_mid(cell);          // 做面上的重构(基本量),含边界
             cell.form_physic();               // 建立cell的全部物理量
             cell.form_conservative();         // 建立守恒量
-            convect_JST(cell);              // 建立对流项            
+            convect_JST(cell);              // 建立对流项
+            SA::SA_diffusion(cell);         // 建立扩散项
         }
 
     return 0;

@@ -17,9 +17,6 @@ namespace SA {
     inline constexpr double Pr = 0.71;
     inline constexpr double Prt = 0.9;
 
-    inline double chi(double miubl,double miu,double rho);
-    inline double fv1(double chi);
-
-    inline double SA_main(cc::cell_class& cell);
+    void SA_diffusion(cc::cell_class& cell);
 
 }

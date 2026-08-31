@@ -1,5 +1,6 @@
 #include "classconfig.h"
 #include "config.h"
+#include "physic.h"
 #include <cstring>
 #include <iostream>
 
@@ -40,6 +41,7 @@ void cell_class::face_normal_out(){
 void cell_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
+    phy.mu = SutherLand(phy.T);
 }
 
 
@@ -64,6 +66,12 @@ void face_class::face_physic_mid(){
         cell_class* inner = nei[0] ? nei[0]:nei[1];
         phy.ugrad = inner->phy.ugrad;phy.vgrad = inner->phy.vgrad;tur.miublgrad = inner->tur.miublgrad;
     }
+}
+
+void face_class::form_physic(){
+    phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
+    phy.p = cc::R * phy.rho * phy.T;
+    phy.mu = SutherLand(phy.T);
 }
 
 

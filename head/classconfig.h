@@ -36,6 +36,8 @@ struct face_class{
 
     // 中心差分计算面上物理量
     void face_physic_mid();
+    // 形成全部物理量
+    void form_physic();
 };
 
 struct cell_class{
