@@ -1,11 +1,12 @@
 #pragma once
+#include <cstring>
+#include <vector>
 
 namespace cc {
 
     inline double total_time = 0.0;               // 仿真总时间
     inline long long step = 0;                    // 仿真总步数
 
-    
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};// 二维整数数对
     struct vec2{
         double x = 0.0;
@@ -53,7 +54,14 @@ namespace cc {
         vec2 miublgrad;     // miubl梯度
     };// S-A湍流变量
 
-    using TUR = SA ;  // 在此修改湍流模型
+    struct dissipation{
+    double I[3];            // 二阶矩
+    double R[2];            // 一阶矩
+    vec2 lambda;            // lambda
+    double Y;               // 激波探测器
+    std::vector<double> L;  // 当前网格的守恒量Laplace算子
+    std::vector<double> Fd; // JST阻尼
+    };
 
     // 求解器设置
     inline int cell_num = 0;                          // 网格总数
@@ -63,6 +71,8 @@ namespace cc {
     inline const char* meshpath = "mesh/tunnel.txt";  // 网格文件位置
     inline const char* testpath = "test.txt";         // 测试文件位置
     inline const char* turbulence = "SA";             // 湍流模型名称
+
+    using TUR = SA;
 
     // 网格和边界条件约定
     inline constexpr short INTER = 0;                     // 内部面
@@ -93,6 +103,5 @@ namespace cc {
     inline constexpr double T_s = 110.4;
     inline constexpr double Cp = 1004.675;
     inline constexpr double Cv = 717.645;
-
 
 }

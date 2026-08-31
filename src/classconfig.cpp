@@ -1,6 +1,7 @@
 #include "classconfig.h"
 #include "config.h"
 #include "physic.h"
+#include <cmath>
 #include <cstring>
 #include <iostream>
 
@@ -25,7 +26,7 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
         else if(ecnt == 4){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = f4_;}
         else {std::cerr << "Not Supported Cell Type in" << index << std::endl;}
         if(strncmp(cc::turbulence,"SA", 2) == 0){
-            conser.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);dissipation.reserve(5);} 
+            conser.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);} 
     }
     
 void cell_class::form_conservative(){
@@ -42,8 +43,18 @@ void cell_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
     phy.mu = SutherLand(phy.T);
+    phy.a = sqrt(cc::gamma * cc::R *phy.T);
 }
 
+void cell_class::reform(){
+    phy.rho = conser[0];
+    phy.u = conser[1]/conser[0];
+    phy.v = conser[2]/conser[0];
+    phy.T = (cc::gamma-1)*(conser[3] - conser[0]*(phy.u*phy.u+phy.v*phy.v)*0.5)/(cc::R * conser[0]);
+    tur.miubl = conser[4]/conser[0];
+}
+
+void cell_class::copyconver(){for(int i=0;i<5;i++){conserformer[i] = conser[i];}}
 
 void face_class::face_physic_mid(){
     if(type == INTER){
@@ -72,8 +83,8 @@ void face_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
     phy.mu = SutherLand(phy.T);
+    phy.a = sqrt(cc::gamma *cc::R *phy.T);
 }
-
 
 cell_class& gotocell(int number){
     if(number < 1 || number > cc::cell_num){
@@ -102,6 +113,13 @@ face_class* link_face(int number){return &gotoface(number);}
 
 cell_class* link_cell(int number){
     if(number == 0){return nullptr;} // 有些边是边界不邻接网格,此时暂时返回空指针.
-    return &gotocell(number);}
+    return &gotocell(number);
+}
+
+cell_class* find_neicell(int index,face_class* face){
+    if(face->nei[0] == NULL || face->nei[1] == NULL){return nullptr;}
+    else if(face->nei[0]->index == index){return face->nei[1];}
+    else {return face->nei[0];}
+}
 
 }

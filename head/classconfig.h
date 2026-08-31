@@ -56,11 +56,12 @@ struct cell_class{
     double sad;                                     // 用于S-A湍流模型的壁面距离
     physics phy;                                    // 流动变量结构体
     TUR tur;                                        // 湍流模型字典
-    std::vector<double> conser;                     // 守恒量
+    std::vector<double> conser;                     // RK上的守恒量
+    std::vector<double> conserformer;               // 时间步上的守恒量
     std::vector<double> convect;                    // 对流项
     std::vector<double> diffusion;                  // 扩散项
     std::vector<double> source;                     // 源项
-    std::vector<double> dissipation;                // 耗散
+    dissipation disspiation;                        // 耗散
 
     // 构造器:形成网格
     cell_class() = default;
@@ -72,6 +73,10 @@ struct cell_class{
     void form_conservative();
     // 判断邻接面的法向
     void face_normal_out();
+    // 还原物理量
+    void reform();
+    // 从RK守恒量转到时间步上守恒量
+    void copyconver();
 };
 
 inline std::vector<node_class> NodeList;     // 节点
@@ -95,5 +100,8 @@ face_class* link_face(int number);
 
 // 链接一个网格
 cell_class* link_cell(int number);
+
+// 找到邻接网格
+cell_class* find_neicell(int index,face_class* face);
 
 }
