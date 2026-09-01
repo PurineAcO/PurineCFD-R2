@@ -4,6 +4,7 @@
 #include <cmath>
 
 inline double theta_(cc::cell_class* me,cc::cell_class* nei){
+    if(!std::isfinite(me->disspiation.lambda.x) || !std::isfinite(me->disspiation.lambda.y)){ return 0.0; }
     double t = me->disspiation.lambda.x * (nei->center.x - me->center.x)
              + me->disspiation.lambda.y * (nei->center.y - me->center.y);
     if(t < 0.0){ t = 0.0; }
@@ -22,8 +23,12 @@ void jst::JST_dissipation_INIT(cc::cell_class &cell){
         cell.disspiation.R[1] += nei->center.y - cell.center.y;
     }
     double d = cell.disspiation.I[0]*cell.disspiation.I[2] - cell.disspiation.I[1]*cell.disspiation.I[1];
-    cell.disspiation.lambda.x = (-1) * (cell.disspiation.R[0]*cell.disspiation.I[2]-cell.disspiation.R[1]*cell.disspiation.I[1]) / d;
-    cell.disspiation.lambda.y = (-1) * (cell.disspiation.R[1]*cell.disspiation.I[0]-cell.disspiation.R[0]*cell.disspiation.I[1]) / d;
+    if(d == 0.0 || !std::isfinite(d)){
+        cell.disspiation.lambda = {0.0,0.0};
+    }else{
+        cell.disspiation.lambda.x = (-1) * (cell.disspiation.R[0]*cell.disspiation.I[2]-cell.disspiation.R[1]*cell.disspiation.I[1]) / d;
+        cell.disspiation.lambda.y = (-1) * (cell.disspiation.R[1]*cell.disspiation.I[0]-cell.disspiation.R[0]*cell.disspiation.I[1]) / d;
+    }
 }
 
 void jst::shockwave_recognize(cc::cell_class& cell){
@@ -76,7 +81,9 @@ void jst::JST_dissipation(cc::cell_class &cell){
         // 形成二阶项和四阶项
         for(int j=0;j<5;j++){
             cell.disspiation.Fd[j] += LMD * eps2 * theta * (nei->conser[j] - cell.conser[j]);
-            cell.disspiation.Fd[j] += LMD * eps4 * theta * (nei->disspiation.L[j] - cell.disspiation.L[j]);
+            if(j != 4){
+                cell.disspiation.Fd[j] += LMD * eps4 * theta * (cell.disspiation.L[j] - nei->disspiation.L[j]);
+            }
         }
     }
 }

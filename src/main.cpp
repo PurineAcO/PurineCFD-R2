@@ -49,12 +49,18 @@ int main(){
     wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();
     for(cc::cell_class& cell: cc::CellList){cell.form_conservative();}
 
+    // 记录初始场作为第0步
+    res::report_update(0);
+
     // 求解期
-    double resInit[5] = {0.0,0.0,0.0,0.0,0.0};
     for(int step=1;step<=cc::max_step;step++){
     allcell cell.copyconver();
     allcell local_timestep(cell);
-    double resSq[5] = {0.0,0.0,0.0,0.0,0.0};
+    if(fatime::USE_GLOBAL_DT){
+        double dtmin = 1e30;
+        for(auto& c : cc::CellList){ if(c.localdt < dtmin){ dtmin = c.localdt; } }
+        for(auto& c : cc::CellList){ c.localdt = dtmin; }
+    }
     // RK循环
     for(int j=0;j<5;j++){
         wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();
@@ -73,10 +79,9 @@ int main(){
                 for(int s=0;s<5;s++){
                 conser_RK[s] = (cell.convect[s] - cell.diffusion[s] - cell.disspiation.Fd[s])/cell.vol - cell.source[s];
                 cell.conser[s] = cell.conserformer[s] - RK::RK[j] * cell.localdt * conser_RK[s];}
-                res::accumulate(resSq, conser_RK);
             }
         }
-        res::report(resSq, step, resInit);
+        res::report_update(step);
     }
     return 0;
 }

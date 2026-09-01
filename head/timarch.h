@@ -5,6 +5,7 @@
 namespace fatime {
     inline double CFL = 1.0;            // CFL数
     inline constexpr double C = 1.0;    // 谱半径混合系数
+    inline bool USE_GLOBAL_DT = false;  // true=全局最小时间步(瞬态), false=局部时间步
 }
 
 namespace RK {
