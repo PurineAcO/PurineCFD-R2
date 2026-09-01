@@ -62,6 +62,7 @@ struct cell_class{
     std::vector<double> diffusion;                  // 扩散项
     std::vector<double> source;                     // 源项
     dissipation disspiation;                        // 耗散
+    double localdt;                                 // 当地时间步长
 
     // 构造器:形成网格
     cell_class() = default;

@@ -26,7 +26,7 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
         else if(ecnt == 4){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = f4_;}
         else {std::cerr << "Not Supported Cell Type in" << index << std::endl;}
         if(strncmp(cc::turbulence,"SA", 2) == 0){
-            conser.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);} 
+            conser.reserve(5);conserformer.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);} 
     }
     
 void cell_class::form_conservative(){
@@ -43,7 +43,7 @@ void cell_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
     phy.mu = SutherLand(phy.T);
-    phy.a = sqrt(cc::gamma * cc::R *phy.T);
+    phy.a = get_sonic_velocity(phy.T);
 }
 
 void cell_class::reform(){
@@ -83,7 +83,7 @@ void face_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
     phy.mu = SutherLand(phy.T);
-    phy.a = sqrt(cc::gamma *cc::R *phy.T);
+    phy.a = get_sonic_velocity(phy.T);
 }
 
 cell_class& gotocell(int number){

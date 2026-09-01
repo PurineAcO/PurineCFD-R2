@@ -38,13 +38,14 @@ inline double fw(double g){return g * pow((1+pow(Cw3,6))/(pow(Cw3,6) + pow(g,6))
 // S-A扩散项函数
 void SA_diffusion(cc::cell_class &cell){
     cell.diffusion = {0.0,0.0,0.0,0.0,0.0};
+    cell.tur.mut = cell.phy.rho * cell.tur.miubl * fv1(chi(cell.tur.miubl,cell.phy.mu,cell.phy.rho));
     for(int i=0;i<cell.ecnt;i++){
         cc::face_class* face = cell.nei[i];bool outer = cell.fnorm[i];
         double chi_ = chi(face->tur.miubl,face->phy.mu,face->phy.rho);
         double fv1_ = fv1(chi_);
-        double mu_t = face->phy.rho * face->tur.miubl * fv1_;
-        double mu_eff = mu_t + face->phy.mu;
-        double lambda_eff = mu_t/Prt + face->phy.mu/Pr;
+        face->tur.mut = face->phy.rho * face->tur.miubl * fv1_;
+        double mu_eff = face->tur.mut + face->phy.mu;
+        double lambda_eff = face->tur.mut/Prt + face->phy.mu/Pr;
         double tau_xx = mu_eff * (4.0/3.0 * face->phy.ugrad.x - 2.0/3.0 * face->phy.vgrad.y);
         double tau_xy = mu_eff * (face->phy.ugrad.y + face->phy.vgrad.x);
         double tau_yy = mu_eff * (4.0/3.0 * face->phy.vgrad.y - 2.0/3.0 * face->phy.ugrad.x);
@@ -55,7 +56,7 @@ void SA_diffusion(cc::cell_class &cell){
         std::vector<double> G = {0,tau_xy,tau_yy,
                                 face->phy.u * tau_xy + face->phy.v * tau_yy + q.y,
                                 inv_sigma * (face->phy.mu + face->phy.rho * face->tur.miubl) * face->tur.miublgrad.y};
-        for(int i=0;i<5;i++){cell.diffusion[i] += (2*outer-1) * (F[i] * face->nor.x + G[i] * face->nor.y);}
+        for(int j=0;j<5;j++){cell.diffusion[j] += (2*outer-1) * (F[j] * face->nor.x + G[j] * face->nor.y);}
     }
 }
 

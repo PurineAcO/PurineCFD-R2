@@ -1,4 +1,5 @@
 #include "config.h"
+#include "timarch.h"
 
 inline void DEFINE_BOUNDARY();
 
@@ -9,6 +10,8 @@ void BEFORE_CONFIG(){
     cc::meshpath = "mesh/tunnel.txt";
     cc::testpath = "test.txt";
     cc::turbulence = "SA";
+    cc::max_step = 100;
+    fatime::CFL = 0.5;   // 时间步长安全系数(可在此调整, 更小更稳定)
 }
 
 // 定义边界条件

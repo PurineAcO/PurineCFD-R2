@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cmath>
 #include <vector>
 #include "classconfig.h"
 #include "readmesh.h"
@@ -11,7 +12,11 @@
 #include "grad.h"
 #include "SA.h"
 #include "dissipation.h"
+#include "timarch.h"
+#include "residual.h"
 #include "udf.hpp"
+
+#define allcell for(cc::cell_class& cell : cc::CellList)
 
 int main(){
 
@@ -41,38 +46,37 @@ int main(){
 
     // 初始化
     std_initialize();
-    wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();    // 三个边界条件
+    wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();
     for(cc::cell_class& cell: cc::CellList){cell.form_conservative();}
 
     // 求解期
-    // 这里还有一个巨大的步长/时间推进的循环
-    // for(int i=1;i<=cc::max_step;i++){}
-    for(cc::cell_class& cell : cc::CellList){cell.copyconver();}
-    // 这里还有一个RK循环
-    // for(int j=1;j<=cc::RK;j++){}
-        // 全局更新
-        wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();    // 三个边界条件
-        for(cc::cell_class& cell : cc::CellList){
-            cell.reform();                     // 还原物理量
-            green_gauss_cell_based(cell);   // 建立梯度
-            interpolate_mid(cell);          // 做面上的重构(基本量),含边界
-            cell.form_physic();               // 建立cell的全部物理量
-            jst::JST_dissipation(cell);     // 更新激波探测器
-            jst::laplace_dissipation(cell); // 更新伪Laplace算子
-        }
-        // 正式求解
-        for(cc::cell_class& cell : cc::CellList){
-            cell.form_conservative();         // 建立守恒量
-            convect_JST(cell);              // 建立对流项
-            SA::SA_diffusion(cell);         // 建立扩散项
-            SA::SA_source(cell);            // 建立源项
-            jst::JST_dissipation(cell);     // JST阻尼
-            std::vector<double> conser_RK;    // 临时RK守恒量
-            for(int s=0;s<5;s++){
+    double resInit[5] = {0.0,0.0,0.0,0.0,0.0};
+    for(int step=1;step<=cc::max_step;step++){
+    allcell cell.copyconver();
+    allcell local_timestep(cell);
+    double resSq[5] = {0.0,0.0,0.0,0.0,0.0};
+    // RK循环
+    for(int j=0;j<5;j++){
+        wall_boundary();velocity_inlet_boundary();pressure_outlet_boundary();
+        allcell cell.reform();
+        allcell green_gauss_cell_based(cell);
+        allcell interpolate_mid(cell);
+        allcell cell.form_physic();
+        allcell jst::shockwave_recognize(cell);
+        allcell jst::laplace_dissipation(cell);
+        allcell cell.form_conservative();
+        allcell convect_JST(cell);
+        allcell SA::SA_diffusion(cell);
+        allcell SA::SA_source(cell);
+        allcell jst::JST_dissipation(cell);
+        allcell {std::vector<double> conser_RK;conser_RK.resize(5);
+                for(int s=0;s<5;s++){
                 conser_RK[s] = (cell.convect[s] - cell.diffusion[s] - cell.disspiation.Fd[s])/cell.vol - cell.source[s];
+                cell.conser[s] = cell.conserformer[s] - RK::RK[j] * cell.localdt * conser_RK[s];}
+                res::accumulate(resSq, conser_RK);
             }
-            // cell.conser = cell.conser_former - cc.rk[k] * dt * conser_RK
-
         }
+        res::report(resSq, step, resInit);
+    }
     return 0;
 }
