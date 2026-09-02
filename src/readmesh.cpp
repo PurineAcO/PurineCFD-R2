@@ -23,7 +23,7 @@ short readmesh(const char* path){
     printf("Node:%d,Face:%d,Cell:%d,Types:%d\n",
                     node_num,cc::face_num,cc::cell_num,cc::type_total);
 
-    char line[100];fgets(line,sizeof(line),fp); // 吸收换行符
+    char line[100];fgets(line,sizeof(line),fp);
     type_name.reserve(cc::type_total);
     type_std.reserve(cc::type_total);
     for(int i = 1;i<=cc::type_total;i++){
@@ -33,7 +33,7 @@ short readmesh(const char* path){
         type_std.push_back(type_std_name);
     }
 
-    fgets(line,sizeof(line),fp); // 吸收换行符
+    fgets(line,sizeof(line),fp);
 
     if(fgets(line,sizeof(line),fp) == NULL){
         std::cerr << "No Node Line" << std::endl;return 1;
@@ -55,8 +55,8 @@ short readmesh(const char* path){
     if (cc::NodeList.size() == (size_t)node_num){printf("Node Read OK\n");}
     else{std::cerr << "Node Wrong Nums" << std::endl;}
     
-    fgets(line,sizeof(line),fp); // 吸收换行符
-    fgets(line,sizeof(line),fp); // 吸收(end node),没有这一行一般不报错.
+    fgets(line,sizeof(line),fp);
+    fgets(line,sizeof(line),fp);
     if(fgets(line,sizeof(line),fp) == NULL){
         std::cerr << "No Edge Line" << std::endl;return 1;
     }
@@ -69,7 +69,7 @@ short readmesh(const char* path){
         if(fgets(line,sizeof(line),fp) == NULL){
             std::cerr << "No Face Type Line" << std::endl;return 1;
         }
-        line[strcspn(line,"\r\n")] = 0;   // 去掉换行符, 便于 strcmp
+        line[strcspn(line,"\r\n")] = 0;
         if(strcmp(line,type_name[s-1].c_str())!=0){
             std::cerr << "Not Correct Face Type: got '" << line
                       << "' expect '" << type_name[s-1] << "'" << std::endl;return 1;
@@ -82,7 +82,7 @@ short readmesh(const char* path){
             if(fgets(line,sizeof(line),fp) == NULL){
                 std::cerr << "Edge data read error in section " << s << std::endl;return 1;
             }
-            if(strncmp(line,"(end",4) == 0) break;   // 段结束标记
+            if(strncmp(line,"(end",4) == 0) break;
             int index,p1,p2,c1,c2;
             if(sscanf(line,"%d%d%d%d%d",&index,&p1,&p2,&c1,&c2) != 5){
                 std::cerr << "Edge data read error in section " << s << std::endl;return 1;
@@ -102,8 +102,7 @@ short readmesh(const char* path){
     
     printf("Edge Read OK\n");
 
-    // fgets(line,sizeof(line),fp); // 吸收换行符
-    fgets(line,sizeof(line),fp); // 吸收(end edge),没有这一行一般不报错.
+    fgets(line,sizeof(line),fp);
     if(fgets(line,sizeof(line),fp) == NULL){
         std::cerr << "No Cell Line" << std::endl;return 1;
     }

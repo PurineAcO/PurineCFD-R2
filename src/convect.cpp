@@ -1,22 +1,16 @@
 #include "classconfig.h"
 #include "config.h"
-#include <vector>
 
+// 欧拉通量
 void convect_JST(cc::cell_class &cell){
-    cell.convect = {0.0,0.0,0.0,0.0,0.0};
+    for(int j=0;j<cc::NEQ;j++){cell.convect[j] = 0.0;}
     for(int i=0;i<cell.ecnt;i++){
         cc::face_class* face = cell.nei[i];short outer = 2*cell.fnorm[i]-1;
-        std::vector<double> F = {face->phy.rho*face->phy.u,
-                                face->phy.rho*face->phy.u*face->phy.u + face->phy.rho*cc::R*face->phy.T,
-                                face->phy.rho*face->phy.u*face->phy.v,
-                                face->phy.rho*face->phy.u*(cc::Cp*face->phy.T + 0.5*(face->phy.u*face->phy.u+face->phy.v*face->phy.v)),
-                                face->phy.rho*face->phy.u*face->tur.miubl};
-        std::vector<double> G = {
-                                face->phy.rho*face->phy.v,
-                                face->phy.rho*face->phy.u*face->phy.v,
-                                face->phy.rho*face->phy.v*face->phy.v + face->phy.rho*cc::R*face->phy.T,
-                                face->phy.rho*face->phy.v*(cc::Cp*face->phy.T + 0.5*(face->phy.u*face->phy.u+face->phy.v*face->phy.v)),
-                                face->phy.rho*face->phy.v*face->tur.miubl};
-        for(int j=0;j<=4;j++){cell.convect[j] += outer * cc::dot(cc::vec2{F[j], G[j]}, face->nor);}
+        double rho = face->phy.rho, u = face->phy.u, v = face->phy.v;
+        double H = cc::Cp*face->phy.T + 0.5*(u*u+v*v); // 总焓
+        double p = cc::R*face->phy.rho*face->phy.T;
+        double F[cc::NEQ] = {rho*u, rho*u*u + p, rho*u*v, rho*u*H};
+        double G[cc::NEQ] = {rho*v, rho*u*v, rho*v*v + p, rho*v*H};
+        for(int j=0;j<cc::NEQ;j++){cell.convect[j] += outer * (F[j]*face->nor.x + G[j]*face->nor.y);}
     }
 }

@@ -70,9 +70,4 @@ void center(cc::cell_class &cell){
 
     cell.center = {(S[0]*G[0].x  + S[1]*G[1].x  + S[2]*G[2].x  + S[3]*G[3].x)/(S[0]+S[1]+S[2]+S[3]),
                     (S[0]*G[0].y + S[1]*G[1].y + S[2]*G[2].y + S[3]*G[3].y)/(S[0]+S[1]+S[2]+S[3])};
-    
-}
-
-void walldistance_alternative(cc::cell_class &cell,double H){
-  cell.sad = cell.center.y < (H - cell.center.y) ? cell.center.y : H - cell.center.y;
 }

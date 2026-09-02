@@ -2,10 +2,7 @@
 #include "config.h"
 #include "physic.h"
 #include <cmath>
-#include <cstring>
 #include <iostream>
-
-// node_class
 
 namespace cc {
 
@@ -25,24 +22,24 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
         if(ecnt == 3){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = 0;}
         else if(ecnt == 4){face[0] = f1_;face[1] = f2_;face[2] = f3_;face[3] = f4_;}
         else {std::cerr << "Not Supported Cell Type in" << index << std::endl;}
-        if(strncmp(cc::turbulence,"SA", 2) == 0){
-            conser.reserve(5);conserformer.reserve(5);convect.reserve(5);diffusion.reserve(5);source.reserve(5);} 
     }
-    
+
 void cell_class::form_conservative(){
-    conser = {phy.rho,phy.rho*phy.u,phy.rho*phy.v,phy.rho*phy.e,phy.rho*tur.miubl};
+    conser[0] = phy.rho;
+    conser[1] = phy.rho*phy.u;
+    conser[2] = phy.rho*phy.v;
+    conser[3] = phy.rho*phy.e;
 }
 
 void cell_class::face_normal_out(){
     for(int i=0;i<ecnt;i++){
-        fnorm[i] = dot(nei[i]->nor, {nei[i]->mid.x - center.x, nei[i]->mid.y - center.y}) > 0; 
+        fnorm[i] = dot(nei[i]->nor, {nei[i]->mid.x - center.x, nei[i]->mid.y - center.y}) > 0;
     }
 }
 
 void cell_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
-    phy.mu = SutherLand(phy.T);
     phy.a = get_sonic_velocity(phy.T);
 }
 
@@ -50,11 +47,11 @@ void cell_class::reform(){
     phy.rho = conser[0];
     phy.u = conser[1]/conser[0];
     phy.v = conser[2]/conser[0];
-    phy.T = (cc::gamma-1)*(conser[3] - conser[0]*(phy.u*phy.u+phy.v*phy.v)*0.5)/(cc::R * conser[0]);
-    tur.miubl = conser[4]/conser[0];
+    phy.e = conser[3]/conser[0];
+    phy.T = (phy.e - 0.5*(phy.u*phy.u+phy.v*phy.v))/cc::Cv;
 }
 
-void cell_class::copyconver(){for(int i=0;i<5;i++){conserformer[i] = conser[i];}}
+void cell_class::copyconver(){for(int i=0;i<NEQ;i++){conserformer[i] = conser[i];}}
 
 void face_class::face_physic_mid(){
     if(type == INTER){
@@ -62,27 +59,12 @@ void face_class::face_physic_mid(){
         phy.u = 0.5 * (nei[0]->phy.u + nei[1]->phy.u);
         phy.v = 0.5 * (nei[0]->phy.v + nei[1]->phy.v);
         phy.T = 0.5 * (nei[0]->phy.T + nei[1]->phy.T);
-        tur.miubl = 0.5 * (nei[0]->tur.miubl + nei[1]->tur.miubl);
-        phy.rhograd   = 0.5 * (nei[0]->phy.rhograd   + nei[1]->phy.rhograd);
-        phy.ugrad     = 0.5 * (nei[0]->phy.ugrad     + nei[1]->phy.ugrad);
-        phy.vgrad     = 0.5 * (nei[0]->phy.vgrad     + nei[1]->phy.vgrad);
-        phy.Tgrad     = 0.5 * (nei[0]->phy.Tgrad     + nei[1]->phy.Tgrad);
-        tur.miublgrad = 0.5 * (nei[0]->tur.miublgrad + nei[1]->tur.miublgrad);
-    }
-    else if(type == VIL){
-        cell_class* inner = nei[0] ? nei[0] : nei[1];
-        phy.ugrad = inner->phy.ugrad;phy.vgrad = inner->phy.vgrad;phy.Tgrad = inner->phy.Tgrad;
-    }
-    else if(type == WALL){
-        cell_class* inner = nei[0] ? nei[0]:nei[1];
-        phy.ugrad = inner->phy.ugrad;phy.vgrad = inner->phy.vgrad;tur.miublgrad = inner->tur.miublgrad;
     }
 }
 
 void face_class::form_physic(){
     phy.e = cc::Cv * phy.T + 0.5*(phy.u*phy.u+phy.v*phy.v);
     phy.p = cc::R * phy.rho * phy.T;
-    phy.mu = SutherLand(phy.T);
     phy.a = get_sonic_velocity(phy.T);
 }
 
@@ -112,14 +94,13 @@ short get_facetype(const char *face_std_name){
 face_class* link_face(int number){return &gotoface(number);}
 
 cell_class* link_cell(int number){
-    if(number == 0){return nullptr;} // 有些边是边界不邻接网格,此时暂时返回空指针.
+    if(number == 0){return nullptr;}
     return &gotocell(number);
 }
 
 cell_class* find_neicell(int index,face_class* face){
     if(face->nei[0] == NULL || face->nei[1] == NULL){return nullptr;}
-    else if(face->nei[0]->index == index){return face->nei[1];}
-    else {return face->nei[0];}
+    return (face->nei[0]->index == index) ? face->nei[1] : face->nei[0];
 }
 
 }
