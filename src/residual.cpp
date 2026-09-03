@@ -11,7 +11,11 @@ namespace res {
 namespace {
     std::vector<std::array<double,cc::NEQ>> g_prev;
     bool g_first = true;
+    double g_rms = 1e30;
 }
+
+// 全场场更新RMS(密度), 用于定常收敛判据
+double current_residual(){ return g_rms; }
 
 void report_update(int step){
     if(g_prev.empty()){ g_prev.resize(cc::cell_num); }
@@ -19,6 +23,7 @@ void report_update(int step){
     double maxnorm = -1.0;
     int maxcell = 0;
     double maxx = 0.0, maxy = 0.0;
+    double sum = 0.0; int cnt = 0;
     std::size_t idx = 0;
     for(cc::cell_class& cell : cc::CellList){
         double prim[cc::NEQ] = {cell.phy.rho, cell.phy.u, cell.phy.v, cell.phy.e};
@@ -28,6 +33,7 @@ void report_update(int step){
             double d[cc::NEQ]; double rn = 0.0;
             for(int s=0;s<cc::NEQ;s++){ d[s] = prim[s] - g_prev[idx][s]; rn += d[s]*d[s]; }
             rn = std::sqrt(rn);
+            sum += d[0]*d[0]; cnt++;
             if(rn > maxnorm){
                 maxnorm = rn;
                 for(int s=0;s<cc::NEQ;s++){ maxd[s] = d[s]; }
@@ -38,6 +44,7 @@ void report_update(int step){
         idx++;
     }
     if(g_first){ g_first = false; return; }
+    g_rms = (cnt > 0) ? std::sqrt(sum/cnt) : 1e30;
 
     static bool header = false;
     if(!header){

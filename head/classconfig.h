@@ -64,6 +64,7 @@ inline std::vector<face_class> FaceList;
 inline std::vector<face_class*> WallFaces;
 inline std::vector<face_class*> VILFaces;
 inline std::vector<face_class*> POLFaces;
+inline std::vector<face_class*> FARFaces;
 
 cell_class& gotocell(int number);
 face_class& gotoface(int number);

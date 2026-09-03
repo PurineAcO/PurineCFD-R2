@@ -1,5 +1,5 @@
 #pragma once
 
-void dump_field(double t);
-void save_checkpoint(double t);
-bool load_checkpoint(double& t);
+void dump_field(int step);
+void save_checkpoint(int step);
+bool load_checkpoint(int& step);

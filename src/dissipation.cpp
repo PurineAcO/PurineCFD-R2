@@ -28,26 +28,23 @@ void jst::laplace_dissipation(cc::cell_class &cell){
 void jst::JST_dissipation(cc::cell_class &cell){
     for(int j=0;j<cc::NEQ;j++){cell.disspiation.Fd[j] = 0.0;}
     for(int i=0;i<cell.ecnt;i++){
-        cc::cell_class* nei = cc::find_neicell(cell.index, cell.nei[i]);
+        cc::face_class* face = cell.nei[i];
+        cc::cell_class* nei = cc::find_neicell(cell.index, face);
         if(nei == NULL){continue;}
 
-        double LMD_me = 0, LMD_nei = 0;
-        for(int j=0;j<cell.ecnt;j++){
-            LMD_me += std::abs(cell.nei[j]->phy.u * cell.nei[j]->nor.x + cell.nei[j]->phy.v * cell.nei[j]->nor.y);
-            LMD_me += cell.nei[j]->phy.a * std::hypot(cell.nei[j]->nor.x, cell.nei[j]->nor.y);
-        }
-        for(int j=0;j<nei->ecnt;j++){
-            LMD_nei += std::abs(nei->nei[j]->phy.u * nei->nei[j]->nor.x + nei->nei[j]->phy.v * nei->nei[j]->nor.y);
-            LMD_nei += nei->nei[j]->phy.a * std::hypot(nei->nei[j]->nor.x, nei->nei[j]->nor.y);
-        }
-        double LMD = 0.5 * (LMD_me + LMD_nei);
+        // 该面谱半径(带面长): |u*nx+v*ny| + a*|n|
+        double nx = face->nor.x, ny = face->nor.y;
+        double nlen = std::hypot(nx, ny);
+        double un = face->phy.u*nx + face->phy.v*ny;
+        double lam = std::abs(un) + face->phy.a*nlen;
+        if(lam < 1e-30){ continue; }
 
         double eps2 = jst::k2 * std::max(cell.disspiation.Y, nei->disspiation.Y);
         double eps4 = std::max(0.0, jst::k4 - eps2);
 
         for(int j=0;j<cc::NEQ;j++){
-            cell.disspiation.Fd[j] += LMD * eps2 * (nei->conser[j] - cell.conser[j]);
-            cell.disspiation.Fd[j] += LMD * eps4 * (cell.disspiation.L[j] - nei->disspiation.L[j]);
+            cell.disspiation.Fd[j] += lam * eps2 * (nei->conser[j] - cell.conser[j]);
+            cell.disspiation.Fd[j] += lam * eps4 * (cell.disspiation.L[j] - nei->disspiation.L[j]);
         }
     }
 }

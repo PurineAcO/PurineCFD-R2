@@ -31,33 +31,21 @@ int main(){
     }
 
     DEFINE_BOUNDARY();
-
-    double ckpt_t = 0.0;
-    bool resumed = load_checkpoint(ckpt_t);
-    if(resumed){
-        cc::total_time = ckpt_t;
-        printf("From time: %.6f go on\n", cc::total_time);
-    }else{
-        cc::total_time = 0.0;
-        std_initialize();
-    }
+    cc::total_time = 0.0;
+    std_initialize();
     slip_wall_boundary(); far_field_boundary();
     for(cc::cell_class& cell : cc::CellList){ cell.form_conservative(); }
-    if(!resumed){ dump_field(0.0); }
+    dump_field(0);
 
-    res::report_update(0);
-
-    const double t_end  = 0.20;
-    const double dt_dump = 0.004;
-    double next_dump = std::floor(cc::total_time/dt_dump)*dt_dump + dt_dump;
+    // 定常: 当地时间步长迭代至残差收敛
+    const int dump_step = 10000;    // 每N步存一次场
+    const int conv_check = 200;     // 每N步查残差
     int step = 0;
-    while(cc::total_time < t_end && step < cc::max_step){
+    double res_init = -1.0;
+    while(step < cc::max_step){
         step++;
         allcell cell.copyconver();
-        allcell local_timestep(cell);
-        double dtmin = 1e30;
-        for(auto& c : cc::CellList){ if(c.localdt < dtmin){ dtmin = c.localdt; } }
-        for(auto& c : cc::CellList){ c.localdt = dtmin; }
+        allcell local_timestep(cell);   // 各单元独立dt
         for(int j=0;j<5;j++){
             slip_wall_boundary(); far_field_boundary();
             allcell cell.reform();
@@ -75,15 +63,19 @@ int main(){
                 }
             }
         }
-        cc::total_time += dtmin;
         res::report_update(step);
-        if(cc::total_time >= next_dump){
-            dump_field(cc::total_time);
-            save_checkpoint(cc::total_time);
-            next_dump += dt_dump;
+        if(step % dump_step == 0){ dump_field(step); save_checkpoint(step); }
+        if(step % conv_check == 0){
+            double res = res::current_residual();
+            if(res_init < 0){ res_init = res; }
+            if(res < res_init*1e-4){       // 残差下降4个量级
+                printf("Converged at step %d, res=%.3e\n", step, res);
+                break;
+            }
         }
     }
-    save_checkpoint(cc::total_time);
-    printf("Total step: %d ,total time:%.6f s\n", step, cc::total_time);
+    dump_field(step);
+    save_checkpoint(step);
+    printf("Total step: %d\n", step);
     return 0;
 }
