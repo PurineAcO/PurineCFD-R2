@@ -18,7 +18,7 @@
 
 int main(){
     BEFORE_CONFIG();
-    // freopen(cc::testpath, "w", stdout);
+    freopen(cc::testpath, "w", stdout);
 
     if(readmesh(cc::meshpath)){ return 1; }
     if(linkmesh()){ return 1; }
@@ -41,13 +41,13 @@ int main(){
         cc::total_time = 0.0;
         std_initialize();
     }
-    slip_wall_boundary(); velocity_inlet_boundary(); pressure_outlet_boundary();
+    slip_wall_boundary(); far_field_boundary();
     for(cc::cell_class& cell : cc::CellList){ cell.form_conservative(); }
     if(!resumed){ dump_field(0.0); }
 
     res::report_update(0);
 
-    const double t_end  = cc::total_time + 0.10;
+    const double t_end  = 0.20;
     const double dt_dump = 0.004;
     double next_dump = std::floor(cc::total_time/dt_dump)*dt_dump + dt_dump;
     int step = 0;
@@ -59,7 +59,7 @@ int main(){
         for(auto& c : cc::CellList){ if(c.localdt < dtmin){ dtmin = c.localdt; } }
         for(auto& c : cc::CellList){ c.localdt = dtmin; }
         for(int j=0;j<5;j++){
-            slip_wall_boundary(); velocity_inlet_boundary(); pressure_outlet_boundary();
+            slip_wall_boundary(); far_field_boundary();
             allcell cell.reform();
             allcell interpolate_mid(cell);
             allcell cell.form_physic();

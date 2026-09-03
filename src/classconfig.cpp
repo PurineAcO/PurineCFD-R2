@@ -88,6 +88,7 @@ short get_facetype(const char *face_std_name){
     else if(strcmp(face_std_name,"INTER") == 0){return INTER;}
     else if(strcmp(face_std_name,"VIL") == 0){return VIL;}
     else if(strcmp(face_std_name,"POL") == 0){return POL;}
+    else if(strcmp(face_std_name,"FAR") == 0){return FAR;}
     else {return 697;}
 }
 

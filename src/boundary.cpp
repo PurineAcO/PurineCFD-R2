@@ -1,16 +1,6 @@
 #include "classconfig.h"
 #include "config.h"
-
-void velocity_inlet_boundary(){
-    for(cc::face_class* face : cc::VILFaces){
-        cc::cell_class* c = face->nei[0] ? face->nei[0] : face->nei[1];
-        face->phy.u = cc::VIL_DEFINE.u;
-        face->phy.v = cc::VIL_DEFINE.v;
-        face->phy.T = cc::VIL_DEFINE.T;
-        face->phy.p = c->phy.p;
-        face->phy.rho = face->phy.p / cc::R / face->phy.T;
-    }
-}
+#include <cmath>
 
 void slip_wall_boundary(){
     for(cc::face_class* wall : cc::WallFaces){
@@ -25,19 +15,45 @@ void slip_wall_boundary(){
     }
 }
 
-void pressure_outlet_boundary(){
-    for(cc::face_class* pol : cc::POLFaces){
-        cc::cell_class* c = pol->nei[0] ? pol->nei[0] : pol->nei[1];
-        pol->phy.u = c->phy.u;
-        pol->phy.v = c->phy.v;
-        pol->phy.p = cc::POL_DEFINE.p;
-        bool outer;for(int i=0;i<c->ecnt;i++){if(c->nei[i] == pol){outer = c->fnorm[i];}}
-        if((2*outer-1)*cc::dot(cc::vec2{pol->phy.u, pol->phy.v}, pol->nor) > 0){
-            pol->phy.rho = c->phy.rho;
-            pol->phy.T = pol->phy.p/cc::R/pol->phy.rho;
+// 压力远场
+void far_field_boundary(){
+    double rho_inf = cc::FAR_DEFINE.p/(cc::R*cc::FAR_DEFINE.T);
+    double a_inf = std::sqrt(cc::gamma*cc::R*cc::FAR_DEFINE.T);
+    for(cc::face_class* face : cc::FARFaces){
+        cc::cell_class* c = face->nei[0] ? face->nei[0] : face->nei[1];
+        if(!c){ continue; }
+        double nx = face->nor.x, ny = face->nor.y;
+        double len = std::hypot(nx, ny);
+        if(len < 1e-30){ continue; }
+        nx /= len; ny /= len;
+        if(nx*(face->mid.x - c->center.x) + ny*(face->mid.y - c->center.y) < 0){ nx = -nx; ny = -ny; }
+        double rho = c->phy.rho, p = c->phy.p, T = c->phy.T;
+        double u = c->phy.u, v = c->phy.v;
+        double a = std::sqrt(cc::gamma*cc::R*T);
+        double vn = u*nx + v*ny;
+        double vt = -u*ny + v*nx;
+        double vn_inf = cc::FAR_DEFINE.u*nx + cc::FAR_DEFINE.v*ny;
+        double vt_inf = -cc::FAR_DEFINE.u*ny + cc::FAR_DEFINE.v*nx;
+        double Rp = vn + 2.0*a/(cc::gamma-1.0);
+        double Rm = vn_inf - 2.0*a_inf/(cc::gamma-1.0);
+        double vn_star = 0.5*(Rp + Rm);
+        double a_star = 0.25*(cc::gamma-1.0)*(Rp - Rm);
+        double s, vt_star;
+        if(vn_star >= 0.0){
+            s = p/std::pow(rho, cc::gamma);
+            vt_star = vt;
         }else{
-            pol->phy.T = cc::POL_DEFINE.T - (pol->phy.u*pol->phy.u + pol->phy.v*pol->phy.v) / (2*cc::Cp);
-            pol->phy.rho = pol->phy.p / cc::R / pol->phy.T;
+            s = cc::FAR_DEFINE.p/std::pow(rho_inf, cc::gamma);
+            vt_star = vt_inf;
         }
+        double rho_star = std::pow(a_star*a_star/(cc::gamma*s), 1.0/(cc::gamma-1.0));
+        double p_star = s*std::pow(rho_star, cc::gamma);
+        double u_star = vn_star*nx - vt_star*ny;
+        double v_star = vn_star*ny + vt_star*nx;
+        face->phy.u = u_star;
+        face->phy.v = v_star;
+        face->phy.rho = rho_star;
+        face->phy.p = p_star;
+        face->phy.T = p_star/(cc::R*rho_star);
     }
 }

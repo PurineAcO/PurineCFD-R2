@@ -22,12 +22,12 @@ namespace cc {
 
     struct physics{ double rho, u, v, T, a, p, e; };
 
-    inline constexpr int NEQ = 4;   // 无粘Euler守恒量数: rho, rho*u, rho*v, rho*e
+    inline constexpr int NEQ = 4;   // 守恒量数
 
     struct dissipation{
-        double Y = 0.0;       // 激波探测器
+        double Y = 0.0;       // 激波
         double L[NEQ] = {};   // 伪Laplace
-        double Fd[NEQ] = {};  // JST阻尼
+        double Fd[NEQ] = {};  // JST
     };
 
     inline int cell_num = 0, face_num = 0, type_total = 0;
@@ -39,6 +39,7 @@ namespace cc {
 
     inline struct VIL_condition{double u;double v;double T;double p;} VIL_DEFINE;
     inline struct POL_condition{double p;double T;} POL_DEFINE;
+    inline struct VIL_condition FAR_DEFINE;  // 远场自由流
 
     inline constexpr double gamma = 1.4;
     inline constexpr double R = 287.05;

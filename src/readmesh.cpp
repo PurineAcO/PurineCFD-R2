@@ -157,11 +157,13 @@ short linkmesh(){
             cc::VILFaces.push_back(&face);
         }else if(face.type == cc::POL){
             cc::POLFaces.push_back(&face);
+        }else if(face.type == cc::FAR){
+            cc::FARFaces.push_back(&face);
         }
     }
 
     printf("Link Cell and Face OK \n");
-    printf("Wall:%zu, Inlet:%zu, Outlet:%zu\n",
-           cc::WallFaces.size(), cc::VILFaces.size(), cc::POLFaces.size());
+    printf("Wall:%zu, Inlet:%zu, Outlet:%zu, Far:%zu\n",
+           cc::WallFaces.size(), cc::VILFaces.size(), cc::POLFaces.size(), cc::FARFaces.size());
     return 0;
 }
