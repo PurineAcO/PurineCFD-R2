@@ -1,3 +1,5 @@
+#include "geometry.h"
+#include "readmesh.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -70,4 +72,9 @@ void center(cc::cell_class &cell){
 
     cell.center = {(S[0]*G[0].x  + S[1]*G[1].x  + S[2]*G[2].x  + S[3]*G[3].x)/(S[0]+S[1]+S[2]+S[3]),
                     (S[0]*G[0].y + S[1]*G[1].y + S[2]*G[2].y + S[3]*G[3].y)/(S[0]+S[1]+S[2]+S[3])};
+}
+
+void geometrymain(){
+    if(linkmesh()){return;}
+    for(cc::cell_class& cell : cc::CellList){findnode(cell);volume(cell);center(cell);cell.face_normal_out();}
 }

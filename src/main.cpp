@@ -17,23 +17,12 @@
 #define allcell for(cc::cell_class& cell : cc::CellList)
 
 int main(){
-    BEFORE_CONFIG();
+    BEFORE_CONFIG();    // 可能会被弃用
     freopen(cc::testpath, "w", stdout);
-
-    if(readmesh(cc::meshpath)){ return 1; }
-    if(linkmesh()){ return 1; }
-
-    for(cc::cell_class& cell : cc::CellList){
-        findnode(cell);
-        volume(cell);
-        center(cell);
-        cell.face_normal_out();
-    }
-
-    DEFINE_BOUNDARY();
-    cc::total_time = 0.0;
+    if(readmesh(cc::meshpath)){return 1;}
+    geometrymain();
+    DEFINE_BOUNDARY();  // 可能会被弃用
     std_initialize();
-    slip_wall_boundary(); far_field_boundary();
     for(cc::cell_class& cell : cc::CellList){ cell.form_conservative(); }
     dump_field(0);
 
@@ -45,7 +34,7 @@ int main(){
     while(step < cc::max_step){
         step++;
         allcell cell.copyconver();
-        allcell local_timestep(cell);   // 各单元独立dt
+        allcell local_timestep(cell);
         for(int j=0;j<5;j++){
             slip_wall_boundary(); far_field_boundary();
             allcell cell.reform();
@@ -58,15 +47,15 @@ int main(){
             allcell jst::JST_dissipation(cell);
             for(auto& cell : cc::CellList){
                 for(int s=0;s<4;s++){
-                    double rk = (cell.convect[s] - cell.disspiation.Fd[s])/cell.vol;
-                    cell.conser[s] = cell.conserformer[s] - RK::RK[j]*cell.localdt*rk;
+                    double R = (cell.convect[s] - cell.disspiation.Fd[s])/cell.vol;
+                    cell.conser[s] = cell.conserformer[s] - RK::RK[j]*cell.localdt*R;
                 }
             }
         }
         res::report_update(step);
         if(step % dump_step == 0){ dump_field(step); save_checkpoint(step); }
         if(step % conv_check == 0){
-            double res = res::current_residual();
+            double res = res::current_residual_all();
             if(res_init < 0){ res_init = res; }
             if(res < res_init*1e-4){       // 残差下降4个量级
                 printf("Converged at step %d, res=%.3e\n", step, res);

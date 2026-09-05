@@ -11,11 +11,18 @@ namespace res {
 namespace {
     std::vector<std::array<double,4>> g_prev;
     bool g_first = true;
-    double g_rms = 1e30;
+    double g_rms = 1e30;    // 原: drho RMS
+    double g_all = 1e30;    // 新: 四量差平方和均值
 }
 
-// 全场场更新RMS(密度), 用于定常收敛判据
+// 原残差: 全场密度场更新RMS
 double current_residual(){ return g_rms; }
+// 新残差: 各胞(drho^2+du^2+dv^2+de^2)求和/网格数
+// 若g_all非有限(未初始化/首步), 返回大数避免误判收敛
+static bool g_all_init = false;
+double current_residual_all(){
+    return g_all_init ? g_all : 1e30;
+}
 
 void report_update(int step){
     if(g_prev.empty()){ g_prev.resize(cc::cell_num); }
@@ -24,6 +31,7 @@ void report_update(int step){
     int maxcell = 0;
     double maxx = 0.0, maxy = 0.0;
     double sum = 0.0; int cnt = 0;
+    double sumAll = 0.0;
     std::size_t idx = 0;
     for(cc::cell_class& cell : cc::CellList){
         double prim[4] = {cell.phy.rho, cell.phy.u, cell.phy.v, cell.phy.e};
@@ -34,6 +42,7 @@ void report_update(int step){
             for(int s=0;s<4;s++){ d[s] = prim[s] - g_prev[idx][s]; rn += d[s]*d[s]; }
             rn = std::sqrt(rn);
             sum += d[0]*d[0]; cnt++;
+            sumAll += rn*rn;   // 四量差平方和
             if(rn > maxnorm){
                 maxnorm = rn;
                 for(int s=0;s<4;s++){ maxd[s] = d[s]; }
@@ -45,6 +54,7 @@ void report_update(int step){
     }
     if(g_first){ g_first = false; return; }
     g_rms = (cnt > 0) ? std::sqrt(sum/cnt) : 1e30;
+    if(cnt > 0){ g_all = sumAll/cnt; g_all_init = true; }
 
     static bool header = false;
     if(!header){

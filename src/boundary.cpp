@@ -4,7 +4,6 @@
 #include "physic.h"
 #include <cmath>
 
-// 有滑移不穿透壁面
 void slip_wall_boundary(){
     for(cc::face_class* wall : cc::WallFaces){
 
@@ -20,7 +19,6 @@ void slip_wall_boundary(){
     }
 }
 
-// 压力远场
 void far_field_boundary(){
     double rho_inf = cc::FAR_DEFINE.p/(cc::R*cc::FAR_DEFINE.T);
     double a_inf = get_sonic_velocity(cc::FAR_DEFINE.T);

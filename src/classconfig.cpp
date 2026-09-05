@@ -26,11 +26,7 @@ cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_):
     }
 
 void cell_class::form_conservative(){
-    conser[0] = phy.rho;
-    conser[1] = phy.rho*phy.u;
-    conser[2] = phy.rho*phy.v;
-    conser[3] = phy.rho*phy.e;
-}
+    conser[0] = phy.rho;conser[1] = phy.rho*phy.u;conser[2] = phy.rho*phy.v; conser[3] = phy.rho*phy.e;}
 
 void cell_class::face_normal_out(){
     for(int i=0;i<ecnt;i++){
@@ -54,6 +50,7 @@ void cell_class::reform(){
 
 void cell_class::copyconver(){for(int i=0;i<4;i++){conserformer[i] = conser[i];}}
 
+
 void face_class::face_physic_mid(){
     if(type == INTER){
         phy.rho = 0.5 * (nei[0]->phy.rho + nei[1]->phy.rho);
@@ -69,7 +66,6 @@ void face_class::form_physic(){
     phy.a = get_sonic_velocity(phy.T);
 }
 
-// 安全访问网格
 cell_class& gotocell(int number){
     if(number < 1 || number > cc::cell_num){
         std::cerr << "Cell Not Exists" << std::endl;
@@ -77,7 +73,6 @@ cell_class& gotocell(int number){
     return cc::CellList[number - 1];
 }
 
-// 安全访问邻接边
 face_class& gotoface(int number){
     if(number < 1 || number > cc::face_num){
         std::cerr << "Edge Not Exists" << std::endl;
@@ -86,7 +81,6 @@ face_class& gotoface(int number){
     return cc::FaceList[number - 1];
 }
 
-// 返回面属性代号
 short get_facetype(const char *face_std_name){
     if(strcmp(face_std_name,"WALL") == 0){return WALL;}
     else if(strcmp(face_std_name,"INTER") == 0){return INTER;}
@@ -96,22 +90,18 @@ short get_facetype(const char *face_std_name){
     else {return 697;}
 }
 
-// 链接到面
 face_class* link_face(int number){return &gotoface(number);}
 
-// 链接到网格
 cell_class* link_cell(int number){
     if(number == 0){return nullptr;}
     return &gotocell(number);
 }
 
-// 转到邻接网格
 cell_class* find_neicell(int index,face_class* face){
     if(face->nei[0] == NULL || face->nei[1] == NULL){return nullptr;}
     return (face->nei[0]->index == index) ? face->nei[1] : face->nei[0];
 }
 
-// 对于边界边找到内部网格
 cell_class* boundary_findcell(face_class* face){
     return face->nei[0] ? face->nei[0] : face->nei[1];
 }

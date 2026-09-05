@@ -15,7 +15,8 @@ void BEFORE_CONFIG(){
 }
 
 void DEFINE_BOUNDARY(){
-    cc::VIL_DEFINE = {103.77, 9.08, 300.0, 3.3e6};
-    cc::FAR_DEFINE = {103.77, 9.08, 300.0, 3.3e6};
-    cc::POL_DEFINE = {3.3e6, 300.0};
+    // 自由流: Ma=0.3 T=300K AOA=5° Re_c=3.3e6(c=1m,Sutherland) => p=50359Pa
+    cc::VIL_DEFINE = {103.77, 9.08, 300.0, 50359.34};
+    cc::FAR_DEFINE = {103.77, 9.08, 300.0, 50359.34};
+    cc::POL_DEFINE = {50359.34, 300.0};
 }
