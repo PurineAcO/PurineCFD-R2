@@ -10,12 +10,12 @@ static bool ifin_node(int num[], int number) {
 void findnode(cc::cell_class &cell) {
   short place = 0;
   for (int i = 0; i < cell.ecnt; i++) {
-    if (!ifin_node(cell.node, cell.nei[i]->node.x - 1)) {
-      cell.node[place] = cell.nei[i]->node.x - 1;
+    if (!ifin_node(cell.node, cell.nei[i]->node[0]->number - 1)) {
+      cell.node[place] = cell.nei[i]->node[0]->number - 1;
       place++;
     }
-    if (!ifin_node(cell.node, cell.nei[i]->node.y - 1)) {
-      cell.node[place] = cell.nei[i]->node.y - 1;
+    if (!ifin_node(cell.node, cell.nei[i]->node[1]->number - 1)) {
+      cell.node[place] = cell.nei[i]->node[1]->number - 1;
       place++;
     }
     if(place == cell.ecnt){break;}

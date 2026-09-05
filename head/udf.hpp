@@ -6,7 +6,7 @@ inline void DEFINE_BOUNDARY();
 inline void BEFORE_CONFIG();
 
 void BEFORE_CONFIG(){
-    cc::meshpath = "mesh/cyl.txt";
+    cc::meshpath = "mesh/naca0012.txt";
     cc::testpath = "test.txt";
     cc::fieldpath = "field";
     cc::max_step = 200000;
@@ -15,7 +15,7 @@ void BEFORE_CONFIG(){
 }
 
 void DEFINE_BOUNDARY(){
-    cc::VIL_DEFINE = {520.83, 0.0, 300.0, 101325.0};  // Ma=1.5 超声速自由流
-    cc::FAR_DEFINE = {520.83, 0.0, 300.0, 101325.0};
-    cc::POL_DEFINE = {101325.0, 300.0};
+    cc::VIL_DEFINE = {103.77, 9.08, 300.0, 3.3e6};
+    cc::FAR_DEFINE = {103.77, 9.08, 300.0, 3.3e6};
+    cc::POL_DEFINE = {3.3e6, 300.0};
 }

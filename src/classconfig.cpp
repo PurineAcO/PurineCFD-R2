@@ -10,7 +10,8 @@ node_class::node_class(int number_,double x_,double y_):
     number(number_),x(x_),y(y_){}
 
 face_class::face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_):
-    index(index_),type(type_),node({p1_,p2_}),cell_1(c1_),cell_2(c2_){
+    index(index_),type(type_),cell_1(c1_),cell_2(c2_){
+        node[0] = &NodeList[p1_-1];node[1] = &NodeList[p2_-1];
         mid = {0.5 * (NodeList[p1_-1].x + NodeList[p2_-1].x),
                0.5 * (NodeList[p1_-1].y + NodeList[p2_-1].y)};
         nor = {NodeList[p1_-1].y - NodeList[p2_-1].y,
@@ -51,7 +52,7 @@ void cell_class::reform(){
     phy.T = (phy.e - 0.5*(phy.u*phy.u+phy.v*phy.v))/cc::Cv;
 }
 
-void cell_class::copyconver(){for(int i=0;i<NEQ;i++){conserformer[i] = conser[i];}}
+void cell_class::copyconver(){for(int i=0;i<4;i++){conserformer[i] = conser[i];}}
 
 void face_class::face_physic_mid(){
     if(type == INTER){
@@ -68,6 +69,7 @@ void face_class::form_physic(){
     phy.a = get_sonic_velocity(phy.T);
 }
 
+// 安全访问网格
 cell_class& gotocell(int number){
     if(number < 1 || number > cc::cell_num){
         std::cerr << "Cell Not Exists" << std::endl;
@@ -75,6 +77,7 @@ cell_class& gotocell(int number){
     return cc::CellList[number - 1];
 }
 
+// 安全访问邻接边
 face_class& gotoface(int number){
     if(number < 1 || number > cc::face_num){
         std::cerr << "Edge Not Exists" << std::endl;
@@ -83,6 +86,7 @@ face_class& gotoface(int number){
     return cc::FaceList[number - 1];
 }
 
+// 返回面属性代号
 short get_facetype(const char *face_std_name){
     if(strcmp(face_std_name,"WALL") == 0){return WALL;}
     else if(strcmp(face_std_name,"INTER") == 0){return INTER;}
@@ -92,16 +96,24 @@ short get_facetype(const char *face_std_name){
     else {return 697;}
 }
 
+// 链接到面
 face_class* link_face(int number){return &gotoface(number);}
 
+// 链接到网格
 cell_class* link_cell(int number){
     if(number == 0){return nullptr;}
     return &gotocell(number);
 }
 
+// 转到邻接网格
 cell_class* find_neicell(int index,face_class* face){
     if(face->nei[0] == NULL || face->nei[1] == NULL){return nullptr;}
     return (face->nei[0]->index == index) ? face->nei[1] : face->nei[0];
+}
+
+// 对于边界边找到内部网格
+cell_class* boundary_findcell(face_class* face){
+    return face->nei[0] ? face->nei[0] : face->nei[1];
 }
 
 }

@@ -57,7 +57,7 @@ int main(){
             allcell convect_JST(cell);
             allcell jst::JST_dissipation(cell);
             for(auto& cell : cc::CellList){
-                for(int s=0;s<cc::NEQ;s++){
+                for(int s=0;s<4;s++){
                     double rk = (cell.convect[s] - cell.disspiation.Fd[s])/cell.vol;
                     cell.conser[s] = cell.conserformer[s] - RK::RK[j]*cell.localdt*rk;
                 }
