@@ -1,0 +1,21 @@
+{
+  "io": {
+    "mesh": "mesh/naca0012.txt",
+    "log": "test.txt",
+    "field": "field"
+  },
+  "time": {
+    "max_step": 200000,
+    "total_time": 0.0,
+    "cfl": 1.0,
+    "global_dt": false,
+    "dump_step": 10000,
+    "conv_step": 200,
+    "rk_coeff": [0.25, 0.1666667, 0.375, 0.5, 1.0]
+  },
+  "boundary": {
+    "inlet": { "u": 103.77, "v": 9.08, "T": 300.0, "p": 50359.34 },
+    "farfield": { "Ma": 0.3, "T": 300.0, "p": 50359.34, "AOA_deg": 5.0 },
+    "outlet": { "p": 50359.34, "T": 300.0 }
+  }
+}

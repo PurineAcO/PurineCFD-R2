@@ -4,14 +4,14 @@
 namespace cc {
 
     // 程序基本参数
-    inline int cell_num = 0;                        // 网格数目
-    inline int face_num = 0;                        // 面数目
-    inline int type_total = 0;                      // 边界条件数目
-    inline const char* meshpath = "mesh/tunnel.txt";// 网格文件位置
-    inline const char* testpath = "test.txt";       // 日志输出路径
-    inline const char* fieldpath = "field";         // 流场输出路径
-    inline double total_time = 0.0;                 // 总时间
-    inline long long max_step = 0;                  // 时间步数
+    inline int cell_num = 0;        // 网格数目
+    inline int face_num = 0;        // 面数目
+    inline int type_total = 0;      // 边界条件数目
+    inline const char* meshpath;    // 网格文件位置
+    inline const char* testpath;    // 日志输出路径
+    inline const char* fieldpath;   // 流场输出路径
+    inline double total_time;       // 总时间
+    inline long long max_step;      // 时间步数
 
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};
     struct vec2{
@@ -49,4 +49,10 @@ namespace cc {
     inline constexpr double Cp = 1004.675;  // 定压热容
     inline constexpr double Cv = 717.645;   // 恒容热容
 
+}
+
+namespace config {
+    void load(const char* path = "config.json"); // 读取config.json
+    inline int dump_step;   // 场输出间隔
+    inline int conv_step;   // 残差检查间隔
 }

@@ -12,23 +12,21 @@
 #include "timarch.h"
 #include "residual.h"
 #include "io.h"
-#include "udf.hpp"
 
 #define allcell for(cc::cell_class& cell : cc::CellList)
 
 int main(){
-    BEFORE_CONFIG();    // 可能会被弃用
+    config::load();     // 从config.json读取全部配置
     freopen(cc::testpath, "w", stdout);
     if(readmesh(cc::meshpath)){return 1;}
     geometrymain();
-    DEFINE_BOUNDARY();  // 可能会被弃用
     std_initialize();
     for(cc::cell_class& cell : cc::CellList){ cell.form_conservative(); }
     dump_field(0);
 
     // 定常: 当地时间步长迭代至残差收敛
-    const int dump_step = 10000;    // 每N步存一次场
-    const int conv_check = 200;     // 每N步查残差
+    const int dump_step = config::dump_step;   // 场输出间隔
+    const int conv_check = config::conv_step;  // 残差检查间隔
     int step = 0;
     double res_init = -1.0;
     while(step < cc::max_step){
