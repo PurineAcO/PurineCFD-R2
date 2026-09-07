@@ -41,18 +41,18 @@ void jst::compute_dissipation(cfd::Cell& cell) {
       continue;
     }
 
-    // 计算该面的流动谱半径
+    // 读取面上缓存的谱半径 |u·n|Δs + aΔs。
     const double lam = face->spectral_radius;
     if (lam < 1e-30) {
       continue;
     }
 
-    // 形成该面上的eps
+    // 压力传感器增大时，增强二阶耗散并减弱四阶耗散。
     double eps2 = jst::k2 * std::max(cell.dissipation_terms.pressure_sensor,
                                      neighbor->dissipation_terms.pressure_sensor);
     double eps4 = std::max(0.0, jst::k4 - eps2);
 
-    // 形成耗散项
+    // 累加二阶守恒量差分与四阶耗散项。
     for (int j = 0; j < 4; j++) {
       cell.dissipation_terms.flux[j] +=
           lam * eps2 * (neighbor->conservative[j] - cell.conservative[j]);

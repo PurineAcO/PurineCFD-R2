@@ -30,26 +30,26 @@ void apply_farfield_boundary() {
       ny = -ny;
     }
 
-    // Riemann 不变量计算
+    // 沿外法向组合内部传出的特征量和来流传入的特征量。
     double a = sound_speed(c->flow.T);
     double vn = c->flow.u * nx + c->flow.v * ny;
     double vt = -1 * c->flow.u * ny + c->flow.v * nx;
     double vn_inf = cfd::freestream.u * nx + cfd::freestream.v * ny;
     double vt_inf = -cfd::freestream.u * ny + cfd::freestream.v * nx;
-    double Rp = vn + 2.0 * a / (cfd::gamma - 1.0);         // 第一不变量,出波
-    double Rm = vn_inf - 2.0 * a_inf / (cfd::gamma - 1.0); // 第二不变量,入波
+    double Rp = vn + 2.0 * a / (cfd::gamma - 1.0);         // 向域外传播的声学特征量
+    double Rm = vn_inf - 2.0 * a_inf / (cfd::gamma - 1.0); // 向域内传播的声学特征量
     double vn_star = 0.5 * (Rp + Rm);
     double a_star = 0.25 * (cfd::gamma - 1.0) * (Rp - Rm);
     double s, vt_star;
-    if (vn_star >= 0.0) {                                // 出流,取内部
-      s = c->flow.p / std::pow(c->flow.rho, cfd::gamma); // 第三不变量,熵的衍生物
-      vt_star = vt;                                      // 第四不变量,切向速度
-    } else {                                             // 入流,取来流
+    if (vn_star >= 0.0) { // 出流时取内部单元的熵参数和切向速度
+      s = c->flow.p / std::pow(c->flow.rho, cfd::gamma); // 熵参数 p/ρ^γ，沿等熵过程保持不变
+      vt_star = vt;                                      // 切向速度
+    } else { // 入流时取来流的熵参数和切向速度
       s = cfd::freestream.p / std::pow(rho_inf, cfd::gamma);
       vt_star = vt_inf;
     }
 
-    // 还原物理量
+    // 由特征量恢复边界面的密度、压力和速度。
     far->flow.u = vn_star * nx - vt_star * ny;
     far->flow.v = vn_star * ny + vt_star * nx;
     far->flow.rho = std::pow(a_star * a_star / (cfd::gamma * s), 1.0 / (cfd::gamma - 1.0));

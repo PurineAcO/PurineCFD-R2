@@ -31,19 +31,19 @@ python3 cases/cylinder/generate_case.py
 | 6 | [jst.cpp](src/jst.cpp)、[spalart_allmaras.cpp](src/spalart_allmaras.cpp) | 人工耗散和湍流模型分别加入哪些项？ |
 | 7 | [timestep.cpp](src/timestep.cpp)、[convergence.cpp](src/convergence.cpp)、[io.cpp](src/io.cpp) | 时间步怎样确定？何时停止？结果怎样输出？ |
 
-配置解析和线程设置分别在 `config.cpp`、`parallel.cpp`，不参与离散方程计算。
+配置解析和线程设置分别在 `config.cpp`、`parallel.cpp`。
 
 ## 数值约定
 
 - 单元守恒量为 `Q = [ρ, ρu, ρv, ρE]`，`E = Cv*T + (u²+v²)/2`。代码中的 `flow.e` 是单位质量总能量。
-- 面的 `area_normal = n*Δs` **已经包含面长**。单元用 `normal_points_outward` 将固定面法向转换成自己的外法向。
+- 面的 `area_normal = n*Δs` 包含面长 Δs。单元用 `normal_points_outward` 将固定面法向转换成自己的外法向。
 - Green–Gauss 梯度为 `∇φ = Σf(φf*n_f*Δs_f)/V`，这里的 `V` 是二维单元面积，按单位厚度计。
 - 每阶段按 `Qᵏ = Qⁿ − αk*Δt*R(Qᵏ⁻¹)` 更新，`Qⁿ` 始终是本步开始时的状态。系数依次为 `1/4、1/6、3/8、1/2、1`。
 - `turbulence.nu_tilde` 是 SA 工作变量 ν̃，湍流运动黏度为 `νt = ν̃*fv1`。`spalart_allmaras.cpp` 中的源项按产生、破坏、梯度平方三项展开。
 
 `solver.cpp` 中，每阶段依次恢复状态与边界、计算单元梯度、计算面通量、汇总右端项、统一更新状态。OpenMP 循环末尾的同步保证相邻单元读取的是同一阶段数据。固定几何量在初始化时缓存，面通量每阶段更新一次。
 
-收敛量是 ρ、u、v、E、ν̃ 的最大归一化**状态更新量**，不是方程 L2 残差。相对于首次检查降低至 `1e-4`，且绝对值小于 `1e-6`，才停止迭代。
+收敛量取相邻两次检查之间 ρ、u、v、E、ν̃ 的最大归一化状态更新量 `max|Δφ|/φ_ref`。相对于首次检查降低至 `1e-4`，且绝对值小于 `1e-6`，才停止迭代。
 
 ## 圆柱算例与检查
 

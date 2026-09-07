@@ -137,8 +137,7 @@ void read_mesh(const std::filesystem::path& path) {
     if (degree.size() != 4 || std::any_of(degree.begin(), degree.end(),
                                           [](const auto& entry) { return entry.second != 2; }))
       reader.fail("Cell edges do not form a quadrilateral");
-    // Geometry formulas below assume convex cells. Verify each edge has all other vertices on one
-    // side.
+    // 逐边检查其余顶点是否位于同一侧，保证后续面积和形心公式适用于凸单元。
     for (int id : faces) {
       const auto& edge = cfd::faces[id - 1];
       const auto& a = *edge.nodes[0];

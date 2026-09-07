@@ -18,6 +18,6 @@ inline constexpr double Prt = 0.9;
 
 // 面梯度就绪后，计算黏性通量与 SA 对流、扩散系数。
 void prepare_face_flux(cfd::Face& face);
-// RK子步内求解湍流方程
+// 计算当前 RK 阶段的 SA 更新值，写入 nu_tilde_next。
 void advance_turbulence(cfd::Cell& cell, double coefficient);
 } // namespace sa

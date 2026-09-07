@@ -51,7 +51,7 @@ void compute_cell_area(cfd::Cell& cell) {
   const auto& p2 = cfd::nodes[cell.node_indices[2]];
 
   const auto& p3 = cfd::nodes[cell.node_indices[3]];
-  // 凸四边形的四种三角形分割；保持既定求和顺序。
+  // 四个顶点任选三个组成四个三角形，其面积和等于凸四边形面积的两倍。
   double S[4];
   S[0] = triangle_area(p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
   S[1] = triangle_area(p0.x, p0.y, p1.x, p1.y, p3.x, p3.y);
@@ -66,7 +66,7 @@ void compute_cell_centroid(cfd::Cell& cell) {
   const auto& p2 = cfd::nodes[cell.node_indices[2]];
 
   const auto& p3 = cfd::nodes[cell.node_indices[3]];
-  // 凸四边形的四种三角形分割；保持既定求和顺序。
+  // 将四个三角形的形心按面积加权，得到凸四边形的形心。
   double S[4];
   cfd::Vector2 G[4];
 

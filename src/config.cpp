@@ -60,7 +60,7 @@ void config::load(const std::filesystem::path& path) {
   std::ifstream stream(path);
   if (!stream)
     throw std::runtime_error("Cannot open configuration: " + path.string());
-  // Reject duplicate keys instead of allowing the last occurrence to silently win.
+  // 检查每个 JSON 对象中的键名，遇到重复键时报错。
   std::vector<std::set<std::string>> object_keys;
   auto callback = [&](int depth, Json::parse_event_t event, Json& parsed) {
     if (depth > 16)

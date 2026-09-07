@@ -6,27 +6,27 @@
 namespace sa {
 namespace {
 
-// 计算湍流粘度比chi
+// χ = max(ν̃, 0)/ν，其中 ν = μ/ρ。
 double viscosity_ratio(double rho, double mu, double nu_tilde) {
   return rho * (nu_tilde > 0.0 ? nu_tilde : 0.0) / mu;
 }
-// 计算粘度阻尼函数fv1
+// fv1 将工作变量转换为湍流运动黏度：νt = ν̃*fv1。
 double compute_fv1(double chi) {
   return (chi * chi * chi) / (chi * chi * chi + sa::Cv1 * sa::Cv1 * sa::Cv1);
 }
-// 计算生产项修正函数ft2
+// ft2 修正 SA 源项中的产生项和破坏项。
 double compute_ft2(double chi) {
   return sa::Ct3 * std::exp(-sa::Ct4 * chi * chi);
 }
-// 计算涡量修正函数fv2
+// fv2 用于修正源项中的涡量尺度。
 double compute_fv2(double chi) {
   return 1 - chi / (1 + chi * compute_fv1(chi));
 }
-// 计算壁面指标g
+// g 是壁面破坏函数 fw 的中间变量。
 double compute_g(double r) {
   return r + sa::Cw2 * (r * r * r * r * r * r - r);
 }
-// 计算壁面阻尼函数fw
+// fw 控制壁面破坏项随无量纲距离参数 r 的变化。
 double compute_fw(double g) {
   constexpr double cw3_squared = sa::Cw3 * sa::Cw3;
   constexpr double cw3_sixth = cw3_squared * cw3_squared * cw3_squared;
@@ -90,7 +90,7 @@ void advance_turbulence(cfd::Cell& cell, double coefficient) {
   for (int j = 0; j < cell.face_count; j++) {
     cfd::Face* face = cell.faces[j];
     int outward_sign = 2 * cell.normal_points_outward[j] - 1;
-    // 一阶迎风对流: outward_volume_flux(向外为正)>0 上游为本格, <0 入流取邻格或边界给定ν̃
+    // 一阶迎风取值：流出时取本单元 ν̃，流入时取相邻单元或边界面的 ν̃。
     double outward_volume_flux = outward_sign * face->volume_flux;
     double upwind_nu = cell.turbulence.nu_tilde;
     if (outward_volume_flux < 0.0) {
