@@ -1,185 +1,114 @@
 #include "config.h"
-#include "timarch.h"
-#include "physic.h"
+#include "physics.h"
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
+#include <fstream>
+#include <limits>
+#include <nlohmann/json.hpp>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <map>
-#include <fstream>
-#include <sstream>
 
 namespace {
+using Json = nlohmann::json;
 
-// 极简JSON解析器, 支持//与/* */注释
-struct JVal {
-    enum Type{NUL,BOL,NUM,STR,OBJ,ARR} t = NUL;
-    bool b = false; double n = 0.0; std::string s;
-    std::map<std::string,JVal> o; std::vector<JVal> a;
-    const JVal* find(const std::string& k) const {
-        auto it = o.find(k);
-        return (it == o.end()) ? nullptr : &it->second;
-    }
-};
-
-class Parser {
-    const std::string& s; std::size_t i = 0;
-    void ws(){
-        while(i < s.size()){
-            char c = s[i];
-            if(c==' '||c=='\t'||c=='\n'||c=='\r'){ i++; }
-            else if(c=='/' && i+1<s.size() && s[i+1]=='/'){ while(i<s.size()&&s[i]!='\n') i++; }
-            else if(c=='/' && i+1<s.size() && s[i+1]=='*'){ i+=2; while(i+1<s.size() && !(s[i]=='*'&&s[i+1]=='/')) i++; i+=2; }
-            else break;
-        }
-    }
-    std::string str(){
-        i++; std::string out;
-        while(i < s.size()){
-            char c = s[i++];
-            if(c=='"') break;
-            if(c=='\\' && i<s.size()){
-                char e = s[i++];
-                switch(e){
-                    case 'n': out+='\n'; break; case 't': out+='\t'; break;
-                    case 'r': out+='\r'; break; case '"': out+='"'; break;
-                    case '\\': out+='\\'; break; case '/': out+='/'; break;
-                    case 'b': out+='\b'; break; case 'f': out+='\f'; break;
-                    default: out+=e;
-                }
-            }else out+=c;
-        }
-        return out;
-    }
-    JVal num(){
-        std::size_t st = i;
-        while(i<s.size()){
-            char c = s[i];
-            if(c=='-'||c=='+'||c=='.'||c=='e'||c=='E'||(c>='0'&&c<='9')) i++; else break;
-        }
-        JVal v; v.t=JVal::NUM; v.n = std::atof(s.substr(st,i-st).c_str());
-        return v;
-    }
-    JVal obj(){
-        i++; JVal v; v.t=JVal::OBJ;
-        while(true){
-            ws(); if(i>=s.size()) break;
-            if(s[i]=='}'){ i++; break; }
-            if(s[i] != '"'){ i++; continue; }
-            std::string k = str();
-            ws(); if(i<s.size() && s[i]==':') i++;
-            v.o[k] = value();
-            ws(); if(i<s.size() && s[i]==',') i++;
-        }
-        return v;
-    }
-    JVal arr(){
-        i++; JVal v; v.t=JVal::ARR;
-        while(true){
-            ws(); if(i>=s.size()) break;
-            if(s[i]==']'){ i++; break; }
-            v.a.push_back(value());
-            ws(); if(i<s.size() && s[i]==',') i++;
-        }
-        return v;
-    }
-public:
-    explicit Parser(const std::string& src):s(src){}
-    JVal value(){
-        ws(); if(i>=s.size()) return JVal();
-        char c = s[i];
-        if(c=='{') return obj();
-        if(c=='[') return arr();
-        if(c=='"'){ JVal v; v.t=JVal::STR; v.s=str(); return v; }
-        if(c=='t'){ i+=4; JVal v; v.t=JVal::BOL; v.b=true; return v; }
-        if(c=='f'){ i+=5; JVal v; v.t=JVal::BOL; v.b=false; return v; }
-        if(c=='n'){ i+=4; return JVal(); }
-        return num();
-    }
-};
-
-double dbl(const JVal* v, const char* k, double def){
-    if(!v) return def;
-    const JVal* c = v->find(k);
-    return (c && c->t==JVal::NUM) ? c->n : def;
-}
-bool flg(const JVal* v, const char* k, bool def){
-    if(!v) return def;
-    const JVal* c = v->find(k);
-    return (c && c->t==JVal::BOL) ? c->b : def;
+void keys(const Json& object, std::initializer_list<const char*> allowed) {
+  if (!object.is_object())
+    throw std::runtime_error("Expected a configuration object");
+  const std::set<std::string> names(allowed.begin(), allowed.end());
+  for (const auto& item : object.items()) {
+    if (!names.count(item.key()))
+      throw std::runtime_error("Unknown configuration key: " + item.key());
+  }
+  for (const auto& name : names) {
+    if (!object.contains(name))
+      throw std::runtime_error("Missing configuration key: " + name);
+  }
 }
 
+double positive(const Json& object, const char* key) {
+  const auto& value = object.at(key);
+  if (!value.is_number())
+    throw std::runtime_error(std::string(key) + " must be a number");
+  const double number = value.get<double>();
+  if (!std::isfinite(number) || number <= 0.0)
+    throw std::runtime_error(std::string(key) + " must be finite and positive");
+  return number;
+}
+
+int count(const Json& object, const char* key) {
+  const double value = positive(object, key);
+  if (!object.at(key).is_number_integer() || value > std::numeric_limits<int>::max()) {
+    throw std::runtime_error(std::string(key) + " must be a positive 32-bit integer");
+  }
+  return static_cast<int>(value);
+}
+
+std::filesystem::path path_value(const Json& object, const char* key,
+                                 const std::filesystem::path& base) {
+  const auto& value = object.at(key);
+  if (!value.is_string())
+    throw std::runtime_error(std::string(key) + " must be a path string");
+  const auto text = value.get<std::string>();
+  if (text.empty() || text.find('\0') != std::string::npos)
+    throw std::runtime_error(std::string(key) + " is an invalid path");
+  return std::filesystem::absolute(base / text).lexically_normal();
+}
 } // namespace
 
-void config::load(const char* path){
-    std::ifstream f(path);
-    if(!f.is_open()){ std::printf("[config] 无法打开 %s\n", path); return; }
-    std::stringstream ss; ss << f.rdbuf();
-    std::string text = ss.str();
-    Parser ps(text);
-    JVal root = ps.value();
-
-    const JVal* io = root.find("io");
-    static std::string sMesh, sLog, sField;
-    if(io){
-        const JVal* m = io->find("mesh"); if(m && m->t==JVal::STR){ sMesh=m->s; cc::meshpath=sMesh.c_str(); }
-        const JVal* g = io->find("log");  if(g && g->t==JVal::STR){ sLog=g->s;  cc::testpath=sLog.c_str(); }
-        const JVal* d = io->find("field");if(d && d->t==JVal::STR){ sField=d->s;cc::fieldpath=sField.c_str(); }
+void config::load(const std::filesystem::path& path) {
+  std::ifstream stream(path);
+  if (!stream)
+    throw std::runtime_error("Cannot open configuration: " + path.string());
+  // Reject duplicate keys instead of allowing the last occurrence to silently win.
+  std::vector<std::set<std::string>> object_keys;
+  auto callback = [&](int depth, Json::parse_event_t event, Json& parsed) {
+    if (depth > 16)
+      throw std::runtime_error("Configuration nesting is too deep");
+    if (event == Json::parse_event_t::object_start)
+      object_keys.emplace_back();
+    if (event == Json::parse_event_t::key &&
+        !object_keys.back().insert(parsed.get<std::string>()).second) {
+      throw std::runtime_error("Duplicate configuration key: " + parsed.get<std::string>());
     }
+    if (event == Json::parse_event_t::object_end)
+      object_keys.pop_back();
+    return true;
+  };
+  const auto root = Json::parse(stream, callback);
+  keys(root, {"io", "solver", "farfield"});
+  const auto& io = root.at("io");
+  const auto& solver = root.at("solver");
+  const auto& far = root.at("farfield");
+  keys(io, {"mesh", "log", "field"});
+  keys(solver, {"max_steps", "cfl", "dump_interval", "convergence_interval"});
+  keys(far, {"Ma", "T", "p"});
 
-    const JVal* tm = root.find("time");
-    if(tm){
-        cc::max_step    = (long long)dbl(tm,"max_step",(double)cc::max_step);
-        cc::total_time  = dbl(tm,"total_time",cc::total_time);
-        fatime::CFL     = dbl(tm,"cfl",fatime::CFL);
-        fatime::USE_GLOBAL_DT = flg(tm,"global_dt",fatime::USE_GLOBAL_DT);
-        config::dump_step = (int)dbl(tm,"dump_step",(double)config::dump_step);
-        config::conv_step = (int)dbl(tm,"conv_step",(double)config::conv_step);
-        const JVal* rk = tm->find("rk_coeff");
-        if(rk && rk->t==JVal::ARR && !rk->a.empty()){
-            RK::RK.clear();
-            for(const JVal& c : rk->a) if(c.t==JVal::NUM) RK::RK.push_back(c.n);
-        }
-    }
-
-    const JVal* bc = root.find("boundary");
-    if(bc){
-        const JVal* inlet = bc->find("inlet");
-        if(inlet){
-            cc::VIL_DEFINE.u = dbl(inlet,"u",cc::VIL_DEFINE.u);
-            cc::VIL_DEFINE.v = dbl(inlet,"v",cc::VIL_DEFINE.v);
-            cc::VIL_DEFINE.T = dbl(inlet,"T",cc::VIL_DEFINE.T);
-            cc::VIL_DEFINE.p = dbl(inlet,"p",cc::VIL_DEFINE.p);
-        }
-        const JVal* far = bc->find("farfield");
-        if(far){
-            double p = dbl(far,"p",101325.0);
-            double T = dbl(far,"T",300.0);
-            double Ma= dbl(far,"Ma",0.0);
-            double aoa= dbl(far,"AOA_deg",0.0);
-            double U  = Ma * get_sonic_velocity(T);
-            double u  = U * cos(deg2rad(aoa));
-            double v  = U * sin(deg2rad(aoa));
-            cc::FAR_DEFINE = {u,v,T,p};
-        }
-        const JVal* out = bc->find("outlet");
-        if(out){
-            cc::POL_DEFINE.p = dbl(out,"p",cc::POL_DEFINE.p);
-            cc::POL_DEFINE.T = dbl(out,"T",cc::POL_DEFINE.T);
-        }
-    }
-
-    // 湍流/粘性
-    const JVal* vis = root.find("viscous");
-    static std::string sTurb;
-    if(vis){
-        cc::viscous = flg(vis,"ifviscous",false);
-        const JVal* mod = vis->find("model");
-        if(mod && mod->t==JVal::STR){ sTurb = mod->s; cc::turb_model = sTurb.c_str(); }
-    }
-
-    std::printf("[config] mesh=%s CFL=%.2f max_step=%lld viscous=%s model=%s\n",
-        cc::meshpath, fatime::CFL, cc::max_step,
-        cc::viscous ? "ON" : "OFF", cc::turb_model ? cc::turb_model : "-");
+  Settings result;
+  const auto base = std::filesystem::absolute(path).parent_path();
+  result.mesh_path = path_value(io, "mesh", base);
+  result.log_path = path_value(io, "log", base);
+  result.field_path = path_value(io, "field", base);
+  if (result.log_path == result.mesh_path ||
+      result.log_path == std::filesystem::absolute(path).lexically_normal()) {
+    throw std::runtime_error("The log path must not overwrite an input file");
+  }
+  result.max_steps = count(solver, "max_steps");
+  result.dump_interval = count(solver, "dump_interval");
+  result.convergence_interval = count(solver, "convergence_interval");
+  if (result.convergence_interval < 2)
+    throw std::runtime_error("convergence_interval must be at least 2");
+  result.cfl = positive(solver, "cfl");
+  const double ma = positive(far, "Ma");
+  if (ma >= 1.0)
+    throw std::runtime_error("This solver requires a subsonic farfield: 0 < Ma < 1");
+  const double temperature = positive(far, "T");
+  const double pressure = positive(far, "p");
+  const double velocity = ma * sound_speed(temperature);
+  const double density = pressure / (cfd::R * temperature);
+  if (!std::isfinite(velocity) || !std::isfinite(density) || density <= 0.0) {
+    throw std::runtime_error("Farfield values produce an invalid thermodynamic state");
+  }
+  settings = result;
+  cfd::freestream = {velocity, 0.0, temperature, pressure};
 }

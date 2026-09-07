@@ -1,0 +1,8 @@
+/build*/
+/run/
+/cases/cylinder/mesh.txt
+/cases/cylinder/parameters.json
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
