@@ -6,22 +6,27 @@
 
 void slip_wall_boundary(){
     for(cc::face_class* wall : cc::WallFaces){
-
         cc::cell_class* c = cc::boundary_findcell(wall);
-        double nx = wall->nor.x, ny = wall->nor.y;
-        if(nx*(wall->mid.x - c->center.x) + ny*(wall->mid.y - c->center.y) < 0){ nx = -nx; ny = -ny; }
-
-        double vn = (c->phy.u*nx + c->phy.v*ny) / (nx*nx + ny*ny);
-        wall->phy.u = c->phy.u - vn*nx;
-        wall->phy.v = c->phy.v - vn*ny;
+        if(cc::viscous){
+            wall->phy.u = 0.0;
+            wall->phy.v = 0.0;
+        }else{
+            double nx = wall->nor.x, ny = wall->nor.y;
+            if(nx*(wall->mid.x - c->center.x) + ny*(wall->mid.y - c->center.y) < 0){ nx = -nx; ny = -ny; }
+            double vn = (c->phy.u*nx + c->phy.v*ny) / (nx*nx + ny*ny);
+            wall->phy.u = c->phy.u - vn*nx;
+            wall->phy.v = c->phy.v - vn*ny;
+        }
         wall->phy.T = c->phy.T;
         wall->phy.rho = c->phy.rho;
+        wall->tur.miubl = 0.0;
     }
 }
 
 void far_field_boundary(){
     double rho_inf = cc::FAR_DEFINE.p/(cc::R*cc::FAR_DEFINE.T);
     double a_inf = get_sonic_velocity(cc::FAR_DEFINE.T);
+    double nu_inf = 3.0 * sutherland::sutherland(cc::FAR_DEFINE.T)/rho_inf;
     for(cc::face_class* far : cc::FARFaces){
 
         cc::cell_class* c = cc::boundary_findcell(far);
@@ -53,6 +58,7 @@ void far_field_boundary(){
         far->phy.rho = std::pow(a_star*a_star/(cc::gamma*s), 1.0/(cc::gamma-1.0));
         far->phy.p = s*std::pow(far->phy.rho, cc::gamma);
         far->phy.T = far->phy.p/(cc::R*far->phy.rho);
+        far->tur.miubl = nu_inf;
     }
 }
 

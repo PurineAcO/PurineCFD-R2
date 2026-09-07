@@ -23,6 +23,7 @@ struct face_class{
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
     physics phy;                   // 物理量
+    turbulence tur;                // 湍流
 
     face_class() = default;
     face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);// 面构造
@@ -49,6 +50,7 @@ struct cell_class{
     double convect[4];          // 无粘对流项
     dissipation disspiation;    // 耗散项
     double localdt;     // 当地时间步长
+    turbulence tur;      // 湍流
 
     cell_class() = default;
     cell_class(int index_,int f1_,int f2_,int f3_,int f4_,int ecnt_);// 网格构造器

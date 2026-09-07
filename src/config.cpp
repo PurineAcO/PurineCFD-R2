@@ -170,8 +170,16 @@ void config::load(const char* path){
         }
     }
 
-    std::printf("[config] mesh=%s CFL=%.2f max_step=%lld VIL(u=%.2f,v=%.2f,T=%.1f,p=%.1f) FAR(u=%.2f,v=%.2f,T=%.1f,p=%.1f)\n",
+    // 湍流/粘性
+    const JVal* vis = root.find("viscous");
+    static std::string sTurb;
+    if(vis){
+        cc::viscous = flg(vis,"ifviscous",false);
+        const JVal* mod = vis->find("model");
+        if(mod && mod->t==JVal::STR){ sTurb = mod->s; cc::turb_model = sTurb.c_str(); }
+    }
+
+    std::printf("[config] mesh=%s CFL=%.2f max_step=%lld viscous=%s model=%s\n",
         cc::meshpath, fatime::CFL, cc::max_step,
-        cc::VIL_DEFINE.u, cc::VIL_DEFINE.v, cc::VIL_DEFINE.T, cc::VIL_DEFINE.p,
-        cc::FAR_DEFINE.u, cc::FAR_DEFINE.v, cc::FAR_DEFINE.T, cc::FAR_DEFINE.p);
+        cc::viscous ? "ON" : "OFF", cc::turb_model ? cc::turb_model : "-");
 }

@@ -12,6 +12,8 @@ namespace cc {
     inline const char* fieldpath;   // 流场输出路径
     inline double total_time;       // 总时间
     inline long long max_step;      // 时间步数
+    inline bool viscous;            // 是否启用湍流
+    inline const char* turb_model;  // 湍流模型
 
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};
     struct vec2{
@@ -28,7 +30,10 @@ namespace cc {
     inline double dot(const vec2& a, const vec2& b){ return a.x*b.x + a.y*b.y; }
 
     // 物理量矩阵
-    struct physics{ double rho, u, v, T, a, p, e; };
+    struct physics{ double rho, u, v, T, a, p, e; vec2 rhograd,ugrad,vgrad,Tgrad; };
+
+    // 湍流变量矩阵
+    struct turbulence{ double miubl;double sad;double Ft[4] = {};vec2 miublgrad; };
 
     // 用于JST的人工耗散
     struct dissipation{
@@ -47,7 +52,8 @@ namespace cc {
     inline constexpr double gamma = 1.4;    // 气体绝热常数
     inline constexpr double R = 287.05;     // 气体常数R
     inline constexpr double Cp = 1004.675;  // 定压热容
-    inline constexpr double Cv = 717.645;   // 恒容热容
+    inline constexpr double Cv = 717.645;   // 恒容热容  
+    inline constexpr double Pr = 0.71;      // 普朗特数
 
 }
 

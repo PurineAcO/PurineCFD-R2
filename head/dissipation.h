@@ -6,8 +6,8 @@
 */
 
 namespace jst {
-    inline constexpr double k2 = 1.0;       // 二阶阻尼
-    inline constexpr double k4 = 0.05;      // 四阶阻尼
+    inline constexpr double k2 = 0.5;       // 二阶阻尼
+    inline constexpr double k4 = 1.0/64;    // 四阶阻尼
 
     // 激波检测器
     void shockwave_recognize(cc::cell_class& cell);

@@ -7,5 +7,7 @@ void findnode(cc::cell_class& cell);
 double volume(cc::cell_class& cell);
 // 计算网格质心
 void center(cc::cell_class& cell);
+// 计算壁面距离
+void sad(cc::cell_class& cell);
 // 几何分析主程序
 void geometrymain();

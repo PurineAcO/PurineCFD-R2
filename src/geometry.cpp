@@ -9,6 +9,10 @@ static bool ifin_node(int num[], int number) {
   for (int i = 0; i < 4; i++) {if (number == num[i]) {return true;}}return false;
 }
 
+static double norm(cc::vec2 a,cc::vec2 b){
+  return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y));
+}
+
 void findnode(cc::cell_class &cell) {
   short place = 0;
   for (int i = 0; i < cell.ecnt; i++) {
@@ -72,6 +76,14 @@ void center(cc::cell_class &cell){
 
     cell.center = {(S[0]*G[0].x  + S[1]*G[1].x  + S[2]*G[2].x  + S[3]*G[3].x)/(S[0]+S[1]+S[2]+S[3]),
                     (S[0]*G[0].y + S[1]*G[1].y + S[2]*G[2].y + S[3]*G[3].y)/(S[0]+S[1]+S[2]+S[3])};
+}
+
+void sad(cc::cell_class& cell){
+  cell.tur.sad = 1919810;
+  for(cc::face_class* wall : cc::WallFaces){
+    double length = norm(cell.center,wall->mid);
+    if(length  < cell.tur.sad){cell.tur.sad = length;}
+  }
 }
 
 void geometrymain(){
