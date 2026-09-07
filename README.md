@@ -1,6 +1,6 @@
 # PurineCFD-R2
 
-二维定常 SA-RANS 有限体积求解器，使用凸四边形网格、JST 人工耗散、五级 RK 伪时间推进和 OpenMP。
+二维定常层流 / SA-RANS 有限体积求解器，使用凸四边形网格、JST 人工耗散、五级 RK 伪时间推进和 OpenMP。
 
 ## 构建与运行
 
@@ -12,6 +12,10 @@ cmake --build build -j 8
 python3 cases/cylinder/generate_case.py
 ./build/purinecfd config.json
 ```
+
+`solver.model` 必填，可取 `"laminar"` 或 `"sa"`，默认示例为 `"sa"`。修改这一项即可切换物理模型，无需重新编译。层流只推进四个 Navier–Stokes 方程，分子黏度采用 Sutherland 定律，SA 工作变量及湍黏度恒为零。SA 模式保留原模型、源项和远场 ν̃ 设置，可用于后续 NACA 0012 计算；本改动未验证翼型算例。
+
+两种模型共用网格、流动方程、黏性应力与热通量实现。`viscous.cpp` 计算共用通量，`spalart_allmaras.cpp` 负责 SA 黏度闭合与输运。输出统一保留 ν̃ 列，首行记录 `model=laminar` 或 `model=sa`，便于后续稳定性分析选择一致的模型。
 
 配置见 [config.json](config.json)，分为 `io`、`solver`、`farfield` 三部分。字段全部必填；未知字段、重复键和无效值会报错。文件路径相对于配置文件解析。
 
@@ -43,7 +47,7 @@ python3 cases/cylinder/generate_case.py
 
 `solver.cpp` 中，每阶段依次恢复状态与边界、计算单元梯度、计算面通量、汇总右端项、统一更新状态。OpenMP 循环末尾的同步保证相邻单元读取的是同一阶段数据。固定几何量在初始化时缓存，面通量每阶段更新一次。
 
-收敛量取相邻两次检查之间 ρ、u、v、E、ν̃ 的最大归一化状态更新量 `max|Δφ|/φ_ref`。相对于首次检查降低至 `1e-4`，且绝对值小于 `1e-6`，才停止迭代。
+收敛量取相邻两步之间 ρ、u、v、E、ν̃ 的最大归一化状态更新量 `max|Δφ|/φ_ref`。相对于首次检查降低至 `1e-4`，且绝对值小于 `1e-6`，才停止迭代。
 
 ## 圆柱算例与检查
 
@@ -53,7 +57,7 @@ python3 cases/cylinder/generate_case.py
 | 尺寸和网格 | D=1 m，128×96 单元，远场半径 30D，第一层高度 0.006D |
 | 物性 | Sutherland 黏度；由 Re=ρUD/μ 反算 p∞≈1.03007749 Pa，U∞≈69.44379 m/s |
 | 边界 | 无滑移绝热壁面，ν̃=0；亚声速特征远场，ν̃∞=3ν∞ |
-| 迭代 | CFL=1，SA 包含 ft2 项；参考结果在 32,800 步收敛，Cd≈1.49 |
+| 迭代 | CFL=1，SA 包含 ft2 项；SA 参考结果在 32,800 步收敛，Cd≈1.49 |
 
 该结果尚未验证网格独立性。日志默认写入 `run/run.log`；`Converged at step` 表示达到收敛判据，步数用尽会单独提示。错误返回非零退出码。
 流场为 `run/field/step_XXXXXX.dat`，列依次为 x、y、ρ、u、v、T、p、Ma、ν̃。
@@ -65,4 +69,4 @@ clang-format --dry-run --Werror include/*.h src/*.cpp
 PURINECFD_BIN="$PWD/build/purinecfd" uv run pytest -q
 ```
 
-构建启用严格编译警告。`-DPURINE_SANITIZE=ON` 启用 ASan/UBSan。测试覆盖数值回归、线程一致性、输入校验和错误报告。
+构建启用严格编译警告。`-DPURINE_SANITIZE=ON` 启用 ASan/UBSan。测试覆盖 SA 与层流数值回归、线程一致性、模型校验和错误报告。

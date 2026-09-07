@@ -16,7 +16,11 @@ inline constexpr double rmax = 10.0;
 inline constexpr double relaxation_factor = 0.5; // 湍流方程欠松弛因子
 inline constexpr double Prt = 0.9;
 
-// 面梯度就绪后，计算黏性通量与 SA 对流、扩散系数。
+// 层流返回零；SA 使用 ν̃∞ = 3μ∞/ρ∞。
+double freestream_nu_tilde();
+double eddy_viscosity(const cfd::Face& face, double molecular_mu);
+
+// 面梯度就绪后，计算 SA 对流、扩散系数。
 void prepare_face_flux(cfd::Face& face);
 // 计算当前 RK 阶段的 SA 更新值，写入 nu_tilde_next。
 void advance_turbulence(cfd::Cell& cell, double coefficient);

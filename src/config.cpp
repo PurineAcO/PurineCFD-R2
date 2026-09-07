@@ -81,10 +81,17 @@ void config::load(const std::filesystem::path& path) {
   const auto& solver = root.at("solver");
   const auto& far = root.at("farfield");
   keys(io, {"mesh", "log", "field"});
-  keys(solver, {"max_steps", "cfl", "dump_interval", "convergence_interval"});
+  keys(solver, {"max_steps", "cfl", "dump_interval", "convergence_interval", "model"});
   keys(far, {"Ma", "T", "p"});
 
   Settings result;
+  const auto& model = solver.at("model");
+  if (model == "laminar")
+    result.model = FlowModel::laminar;
+  else if (model == "sa")
+    result.model = FlowModel::sa;
+  else
+    throw std::runtime_error("solver.model must be laminar or sa");
   const auto base = std::filesystem::absolute(path).parent_path();
   result.mesh_path = path_value(io, "mesh", base);
   result.log_path = path_value(io, "log", base);

@@ -1,12 +1,12 @@
 #include "initialization.h"
 #include "mesh.h"
 #include "physics.h"
+#include "spalart_allmaras.h"
 #include <cstdio>
 
 void initialize_freestream() {
   const auto& fs = cfd::freestream;
-  double rho_inf = fs.p / (cfd::R * fs.T);
-  double nu_tilde_inf = 3.0 * sutherland::dynamic_viscosity(fs.T) / rho_inf;
+  const double nu_tilde_inf = sa::freestream_nu_tilde();
   for (cfd::Cell& cell : cfd::cells) {
     cell.flow.T = fs.T;
     cell.flow.p = fs.p;

@@ -1,4 +1,5 @@
 #include "spalart_allmaras.h"
+#include "config.h"
 #include "mesh.h"
 #include "physics.h"
 #include <cmath>
@@ -61,27 +62,23 @@ double source_term(const cfd::Cell& cell) {
 
 } // namespace
 
+double freestream_nu_tilde() {
+  if (!config::uses_sa())
+    return 0.0;
+  const double rho = cfd::freestream.p / (cfd::R * cfd::freestream.T);
+  return 3.0 * sutherland::dynamic_viscosity(cfd::freestream.T) / rho;
+}
+
+double eddy_viscosity(const cfd::Face& face, double mu) {
+  const double chi = viscosity_ratio(face.flow.rho, mu, face.turbulence.nu_tilde);
+  return face.flow.rho * compute_fv1(chi) * face.turbulence.nu_tilde;
+}
+
 void prepare_face_flux(cfd::Face& face) {
   const double mu = sutherland::dynamic_viscosity(face.flow.T);
-  face.volume_flux = face.flow.u * face.area_normal.x + face.flow.v * face.area_normal.y;
-  face.spectral_radius = std::abs(face.volume_flux) + face.flow.a * face.length;
   face.sa_diffusivity = face.turbulence.nu_tilde + mu / face.flow.rho;
   face.sa_gradient_flux = face.turbulence.nu_tilde_gradient.x * face.area_normal.x +
                           face.turbulence.nu_tilde_gradient.y * face.area_normal.y;
-  const double chi = viscosity_ratio(face.flow.rho, mu, face.turbulence.nu_tilde);
-  const double mut = face.flow.rho * compute_fv1(chi) * face.turbulence.nu_tilde;
-  const double mu_eff = mut + mu;
-  const double tau_xx = mu_eff * (4.0 / 3 * face.flow.ugrad.x - 2.0 / 3 * face.flow.vgrad.y);
-  const double tau_yy = mu_eff * (4.0 / 3 * face.flow.vgrad.y - 2.0 / 3 * face.flow.ugrad.x);
-  const double tau_xy = mu_eff * (face.flow.ugrad.y + face.flow.vgrad.x);
-  const double lambda_eff = mu / cfd::Pr + mut / Prt;
-  const cfd::Vector2 q = {-lambda_eff * cfd::Cp * face.flow.Tgrad.x,
-                          -lambda_eff * cfd::Cp * face.flow.Tgrad.y};
-  face.viscous_flux[0] = 0.0;
-  face.viscous_flux[1] = tau_xx * face.area_normal.x + tau_xy * face.area_normal.y;
-  face.viscous_flux[2] = tau_xy * face.area_normal.x + tau_yy * face.area_normal.y;
-  face.viscous_flux[3] = (face.flow.u * tau_xx + face.flow.v * tau_xy - q.x) * face.area_normal.x +
-                         (face.flow.u * tau_xy + face.flow.v * tau_yy - q.y) * face.area_normal.y;
 }
 
 void advance_turbulence(cfd::Cell& cell, double coefficient) {

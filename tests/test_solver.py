@@ -59,9 +59,11 @@ def read_field(path):
   return [[float(value) for value in row.split()] for row in path.read_text().splitlines()[2:]]
 
 
-def test_rans_regression_and_thread_consistency(executable, mesh, tmp_path):
+@pytest.mark.parametrize('model', ['sa', 'laminar'])
+def test_model_regression_and_thread_consistency(executable, mesh, tmp_path, model):
   config = settings(mesh)
   config['solver']['max_steps'] = 200
+  config['solver']['model'] = model
   for threads in [1, 4]:
     directory = tmp_path / str(threads)
     result = run_case(executable, directory, config, threads)
@@ -74,7 +76,12 @@ def test_rans_regression_and_thread_consistency(executable, mesh, tmp_path):
     stats.append([line for line in lines if line.lstrip()[:1].isdigit()])
   assert len(stats[0]) == 199 and stats[0] == stats[1]
   data = read_field(first)
-  expected = json.loads((ROOT / 'tests/reference_200.json').read_text())
+  reference = 'reference_200.json' if model == 'sa' else 'reference_laminar_200.json'
+  expected = json.loads((ROOT / 'tests' / reference).read_text())
+  if model == 'laminar':
+    assert all(row[8] == 0 for row in data)
+  else:
+    assert any(row[8] > 0 for row in data)
   assert len(data) == expected['cells']
   for row in data:
     assert len(row) == 9 and all(math.isfinite(value) for value in row)
@@ -88,13 +95,17 @@ def test_rans_regression_and_thread_consistency(executable, mesh, tmp_path):
     actual = [function(row[i] for row in data) for i in range(9)]
     assert actual == pytest.approx(expected[label], rel=2e-7, abs=1e-10)
   log = (tmp_path / '1/run.log').read_text()
-  assert 'Steady SA-RANS' in log and 'convergence criterion not satisfied' in log
+  label = 'Steady SA-RANS' if model == 'sa' else 'Steady laminar Navier-Stokes'
+  assert label in log and 'convergence criterion not satisfied' in log
+  assert f'model={model}' in first.read_text().splitlines()[0]
   assert not (tmp_path / '1/field/checkpoint.dat').exists()
 
 
 @pytest.mark.parametrize(
   'section,key,value',
   [
+    ('solver', 'model', 'sst'),
+    ('solver', 'model', True),
     ('solver', 'global_dt', False),
     ('solver', 'rk_coeff', [1.0]),
     ('solver', 'cfl', 0),

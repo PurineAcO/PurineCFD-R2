@@ -14,7 +14,7 @@ void dump_field(int step) {
   File file(std::fopen(path.c_str(), "w"), &std::fclose);
   if (!file)
     throw std::runtime_error("Cannot create field file: " + path.string());
-  std::fprintf(file.get(), "TITLE=\"step %d\"\n", step);
+  std::fprintf(file.get(), "TITLE=\"step %d model=%s\"\n", step, config::model_name());
   std::fprintf(file.get(),
                "VARIABLES=\"x\",\"y\",\"rho\",\"u\",\"v\",\"T\",\"p\",\"Ma\",\"nu_tilde\"\n");
   for (const auto& cell : cfd::cells) {

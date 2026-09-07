@@ -5,7 +5,7 @@ find_package(OpenMP REQUIRED)
 add_executable(purinecfd
   src/main.cpp src/solver.cpp src/config.cpp src/mesh.cpp src/mesh_reader.cpp src/geometry.cpp
   src/initialization.cpp src/physics.cpp src/boundary.cpp
-  src/gradients.cpp src/fluxes.cpp src/jst.cpp src/spalart_allmaras.cpp src/timestep.cpp
+  src/gradients.cpp src/fluxes.cpp src/jst.cpp src/spalart_allmaras.cpp src/viscous.cpp src/timestep.cpp
   src/convergence.cpp src/io.cpp src/parallel.cpp
 )
 target_compile_features(purinecfd PRIVATE cxx_std_17)

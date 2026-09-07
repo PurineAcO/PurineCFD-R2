@@ -12,6 +12,7 @@
 #include "mesh_reader.h"
 #include "spalart_allmaras.h"
 #include "timestep.h"
+#include "viscous.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -81,14 +82,17 @@ void advance_stage(double coefficient) {
   for_each_face([](auto& face) {
     compute_face_gradients(face);
     prepare_convective_flux(face);
-    sa::prepare_face_flux(face);
+    prepare_viscous_flux(face);
+    if (config::uses_sa())
+      sa::prepare_face_flux(face);
   });
   // 4. 单元按自己的外法向汇总通量。此处会读取相邻单元，不能提前更新状态。
   for_each_cell([coefficient](auto& cell) {
     // 直接使用已保存的守恒量，避免 Q→原始量→Q 的重复转换。
     assemble_face_fluxes(cell);
     jst::compute_dissipation(cell);
-    sa::advance_turbulence(cell, coefficient);
+    if (config::uses_sa())
+      sa::advance_turbulence(cell, coefficient);
   });
   // 5. 上一遍循环结束后，统一推进守恒量及 SA 工作变量。
   for_each_cell([coefficient](auto& cell) {
@@ -100,17 +104,19 @@ void advance_stage(double coefficient) {
       cell.conservative[component] =
           cell.previous_conservative[component] - coefficient * cell.local_dt * residual;
     }
-    cell.turbulence.nu_tilde = cell.turbulence.nu_tilde_next;
+    if (config::uses_sa())
+      cell.turbulence.nu_tilde = cell.turbulence.nu_tilde_next;
   });
 }
 
 } // namespace
 
-void solve_steady_rans() {
+void solve_steady_flow() {
   const auto& options = config::settings;
   read_mesh(options.mesh_path);
   initialize_geometry();
-  for_each_cell(cache_wall_distance);
+  if (config::uses_sa())
+    for_each_cell(cache_wall_distance);
   initialize_freestream();
   for_each_cell([](auto& cell) { cell.update_conservative(); });
   check_flow(0);

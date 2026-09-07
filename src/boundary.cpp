@@ -1,6 +1,7 @@
 #include "boundary.h"
 #include "mesh.h"
 #include "physics.h"
+#include "spalart_allmaras.h"
 #include <cmath>
 
 void apply_wall_boundary() {
@@ -17,7 +18,7 @@ void apply_wall_boundary() {
 void apply_farfield_boundary() {
   double rho_inf = cfd::freestream.p / (cfd::R * cfd::freestream.T);
   double a_inf = sound_speed(cfd::freestream.T);
-  double nu_inf = 3.0 * sutherland::dynamic_viscosity(cfd::freestream.T) / rho_inf;
+  const double nu_inf = sa::freestream_nu_tilde();
   for (cfd::Face* far : cfd::farfield_faces) {
 
     cfd::Cell* c = cfd::boundary_cell(far);

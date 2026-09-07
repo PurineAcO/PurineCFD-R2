@@ -23,7 +23,7 @@ Peak larger(Peak a, Peak b) {
 #pragma omp declare reduction(peak:Peak \
                               : omp_out = larger(omp_out, omp_in)) initializer(omp_priv = {})
 
-constexpr int fields = 5; // rho,u,v,e,nu_tilde
+constexpr int fields = 5; // rho,u,v,e,nu_tilde；层流的第五分量恒为零。
 std::vector<std::array<double, fields>> previous_state;
 bool first_report = true;
 double max_updates[fields]; // 各原始变量的最大绝对更新量
