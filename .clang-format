@@ -1,8 +1,9 @@
 BasedOnStyle: LLVM
-IndentWidth: 2
+IndentWidth: 4
 ColumnLimit: 100
 BreakBeforeBraces: Attach
-AllowShortIfStatementsOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
 AllowShortLoopsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
 PointerAlignment: Left

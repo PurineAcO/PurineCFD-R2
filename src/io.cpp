@@ -1,30 +1,76 @@
 #include "io.h"
+#include "classconfig.h"
 #include "config.h"
-#include "mesh.h"
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
-#include <memory>
-#include <stdexcept>
+#include <string>
+#include <sys/stat.h>
 
-void dump_field(int step) {
-  char filename[32];
-  std::snprintf(filename, sizeof(filename), "step_%06d.dat", step);
-  const auto path = config::settings.field_path / filename;
-  using File = std::unique_ptr<std::FILE, decltype(&std::fclose)>;
-  File file(std::fopen(path.c_str(), "w"), &std::fclose);
-  if (!file)
-    throw std::runtime_error("Cannot create field file: " + path.string());
-  std::fprintf(file.get(), "TITLE=\"step %d\"\n", step);
-  std::fprintf(file.get(),
-               "VARIABLES=\"x\",\"y\",\"rho\",\"u\",\"v\",\"T\",\"p\",\"Ma\",\"nu_tilde\"\n");
-  for (const auto& cell : cfd::cells) {
-    std::fprintf(file.get(), "%.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e\n", cell.center.x,
-                 cell.center.y, cell.flow.rho, cell.flow.u, cell.flow.v, cell.flow.T, cell.flow.p,
-                 std::hypot(cell.flow.u, cell.flow.v) / cell.flow.a, cell.turbulence.nu_tilde);
-  }
-  if (std::ferror(file.get()))
-    throw std::runtime_error("Failed to write field: " + path.string());
-  if (std::fclose(file.release()) != 0)
-    throw std::runtime_error("Failed to close field: " + path.string());
-  std::printf("Field output: step %d %s\n", step, path.c_str());
+namespace {
+
+bool make_dirs(const std::string& path){
+    if(path.empty()){
+        return true;
+    }
+    for(size_t i=1;i<path.size();i++){
+        if(path[i] != '/'){
+            continue;
+        }
+        std::string sub = path.substr(0,i);
+        if(mkdir(sub.c_str(),0755) != 0 && errno != EEXIST){
+            return false;
+        }
+    }
+    return mkdir(path.c_str(),0755) == 0 || errno == EEXIST;
+}
+
+}
+
+bool open_log(const char* path){
+    std::string text(path);
+    size_t slash = text.find_last_of('/');
+    if(slash != std::string::npos && slash != 0 && !make_dirs(text.substr(0,slash))){
+        fprintf(stderr,"Error: cannot create log directory for %s\n",path);
+        return false;
+    }
+    if(!freopen(path,"w",stdout)){
+        fprintf(stderr,"Error: cannot open log: %s\n",path);
+        return false;
+    }
+    return true;
+}
+
+bool dump_field(int step){
+    if(!make_dirs(cc::fieldpath)){
+        fprintf(stderr,"Error: cannot create field directory: %s\n",cc::fieldpath.c_str());
+        return false;
+    }
+    char tag[32];
+    snprintf(tag,sizeof(tag),"step_%06d.dat",step);
+    const std::string name = cc::fieldpath + "/" + tag;
+    FILE* fp = fopen(name.c_str(),"w");
+    if(!fp){
+        fprintf(stderr,"Error: cannot create field file: %s\n",name.c_str());
+        return false;
+    }
+    fprintf(fp,"TITLE=\"step %d\"\n",step);
+    fprintf(fp,"VARIABLES=\"x\",\"y\",\"rho\",\"u\",\"v\",\"T\",\"p\",\"Ma\",\"nu_tilde\"\n");
+    for(const cc::cell_class& cell : cc::CellList){
+        fprintf(fp,"%.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e\n",
+                cell.center.x,cell.center.y,cell.phy.rho,cell.phy.u,cell.phy.v,
+                cell.phy.T,cell.phy.p,
+                std::hypot(cell.phy.u,cell.phy.v)/cell.phy.a,cell.tur.miubl);
+    }
+    if(ferror(fp)){
+        fclose(fp);
+        fprintf(stderr,"Error: failed to write field file: %s\n",name.c_str());
+        return false;
+    }
+    if(fclose(fp) != 0){
+        fprintf(stderr,"Error: failed to close field file: %s\n",name.c_str());
+        return false;
+    }
+    printf("[场输出] step %d  %s\n",step,name.c_str());
+    return true;
 }

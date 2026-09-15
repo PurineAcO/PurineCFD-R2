@@ -1,7 +1,13 @@
 #pragma once
-#include "mesh.h"
+#include "classconfig.h"
 
-// 连接网格，计算单元面积、中心、面方向及固定几何缓存。
-void initialize_geometry();
-// 到最近壁面中点的距离 d；保存 1/d²，供 SA 源项和时间步使用。
-void cache_wall_distance(cfd::Cell& cell);
+// 找到全部邻接节点
+void findnode(cc::cell_class& cell);
+// 计算网格体积(四个三角形面积和的一半)
+void volume(cc::cell_class& cell);
+// 计算网格质心(按三角形面积加权)
+void center(cc::cell_class& cell);
+// 计算壁面距离
+void sad(cc::cell_class& cell);
+// 几何分析主程序
+bool geometrymain();

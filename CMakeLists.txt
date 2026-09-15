@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.16)
 project(PurineCFD_R2 LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 find_package(OpenMP REQUIRED)
 add_executable(purinecfd
-  src/main.cpp src/solver.cpp src/config.cpp src/mesh.cpp src/mesh_reader.cpp src/geometry.cpp
-  src/initialization.cpp src/physics.cpp src/boundary.cpp
-  src/gradients.cpp src/fluxes.cpp src/jst.cpp src/spalart_allmaras.cpp src/timestep.cpp
-  src/convergence.cpp src/io.cpp src/parallel.cpp
+  src/main.cpp src/config.cpp src/classconfig.cpp src/readmesh.cpp src/geometry.cpp
+  src/initialize.cpp src/physic.cpp src/boundary.cpp src/interpolate.cpp src/grad.cpp
+  src/convect.cpp src/dissipation.cpp src/SA.cpp src/timarch.cpp src/residual.cpp
+  src/io.cpp src/parallel.cpp
 )
 target_compile_features(purinecfd PRIVATE cxx_std_17)
 target_include_directories(purinecfd PRIVATE include)

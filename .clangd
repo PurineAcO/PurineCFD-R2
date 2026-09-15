@@ -1,0 +1,6 @@
+# clangd / IntelliSense configuration (does not affect the CMake build).
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    # clang does not pick up GCC's internal include dir, which is where omp.h lives.
+    - -isystem/usr/lib/gcc/x86_64-linux-gnu/13/include

@@ -1,31 +1,176 @@
-#include "config.h"
-#include "parallel.h"
-#include "solver.h"
 #include <cstdio>
-#include <exception>
-#include <filesystem>
 #include <omp.h>
-#include <stdexcept>
+#include "boundary.h"
+#include "classconfig.h"
+#include "config.h"
+#include "convect.h"
+#include "dissipation.h"
+#include "geometry.h"
+#include "grad.h"
+#include "initialize.h"
+#include "interpolat.h"
+#include "io.h"
+#include "parallel.h"
+#include "readmesh.h"
+#include "residual.h"
+#include "SA.h"
+#include "timarch.h"
 
-int main(int argc, char** argv) {
-  try {
-    if (argc > 2)
-      throw std::runtime_error("Usage: purinecfd [config.json]");
+#define allcell for(cc::cell_class& cell : cc::CellList)
+
+static bool check_field(const char* func,int step){
+    if(cc::field_bad_cell.load(std::memory_order_relaxed) == 0){
+        return true;
+    }
+    for(const cc::cell_class& cell : cc::CellList){
+        if(cc::field_ok(cell)){
+            continue;
+        }
+        fprintf(stderr,
+                "Error: Invalid flow state at step %d, function %s, cell #%d (%.6f,%.6f)"
+                " rho=%.6e u=%.6e v=%.6e T=%.6e p=%.6e miubl=%.6e\n",
+                step,func,cell.index,cell.center.x,cell.center.y,
+                cell.phy.rho,cell.phy.u,cell.phy.v,cell.phy.T,cell.phy.p,cell.tur.miubl);
+        return false;
+    }
+    return true;
+}
+
+static void recover_flow(){
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::cell_num;i++){
+        cc::CellList[i].reform();
+        cc::CellList[i].form_physic();
+    }
+}
+
+static bool rk_stage(double rk,int step){
+    recover_flow();
+    if(!check_field("recover_flow",step)){
+        return false;
+    }
+    slip_wall_boundary();
+    far_field_boundary();
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::cell_num;i++){
+        interpolate_mid(cc::CellList[i]);
+    }
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::cell_num;i++){
+        cc::cell_class& cell = cc::CellList[i];
+        green_gauss_cell_based(cell);
+        jst::shockwave_recognize(cell);
+        jst::laplace_dissipation(cell);
+    }
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::face_num;i++){
+        cc::face_class& face = cc::FaceList[i];
+        face.form_physic();
+        face_gradient(face);
+        convect_JST(face);
+        SA::diffusion_SA(face);
+    }
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::cell_num;i++){
+        cc::cell_class& cell = cc::CellList[i];
+        assemble_flux(cell);
+        jst::JST_dissipation(cell);
+        SA::SA_equation_RK(cell,rk);
+    }
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<cc::cell_num;i++){
+        cc::cell_class& cell = cc::CellList[i];
+        for(int s=0;s<4;s++){
+            double R = (cell.convect[s] - cell.diss.Fd[s] - cell.visflux[s])*cell.invvol;
+            cell.conser[s] = cell.conserformer[s] - rk*cell.localdt*R;
+        }
+        cell.tur.miubl = cell.tur.miubl_next;
+        field_mark(cell);
+    }
+    if(!check_field("rk_stage",step)){
+        return false;
+    }
+    return true;
+}
+
+static bool solve(){
+    int step = 0;
+    int dumped = 0;
+    bool converged = false;
+    double res_init = -1.0;
+    if(!dump_field(0)){
+        return false;
+    }
+    while(step < cc::max_step){
+        step++;
+#pragma omp parallel for schedule(static)
+        for(int i=0;i<cc::cell_num;i++){
+            cc::CellList[i].copyconver();
+            local_timestep(cc::CellList[i]);
+        }
+        for(int j=0;j<5;j++){
+            if(!rk_stage(RK::RK[j],step)){
+                return false;
+            }
+        }
+        recover_flow();
+        if(!check_field("recover_flow",step)){
+            return false;
+        }
+        res::report_update(step);
+        if(step % config::dump_step == 0){
+            if(!dump_field(step)){
+                return false;
+            }
+            dumped = step;
+        }
+        if(step % config::conv_step == 0){
+            double res = res::relative_update();
+            if(res_init < 0.0){
+                res_init = res;
+            }
+            if(res <= res_init*1e-4 && res < 1e-6){
+                printf("Converged at step %d, relative_update=%.6e\n",step,res);
+                converged = true;
+                break;
+            }
+        }
+    }
+    if(dumped != step && !dump_field(step)){
+        return false;
+    }
+    if(!converged){
+        printf("Iteration limit reached; convergence criterion not satisfied.\n");
+    }
+    printf("Total step: %d\n",step);
+    return true;
+}
+
+int main(int argc,char** argv){
+    if(argc > 2){
+        fprintf(stderr,"Error: Usage: purinecfd [config.json]\n");
+        return 1;
+    }
     const char* thread_policy = parallel::configure_threads();
-    config::load(argc == 2 ? argv[1] : "config.json");
-    const auto& options = config::settings;
-    std::filesystem::create_directories(options.log_path.parent_path());
-    std::filesystem::create_directories(options.field_path);
-    if (!std::freopen(options.log_path.c_str(), "w", stdout))
-      throw std::runtime_error("Cannot open log: " + options.log_path.string());
-    std::printf("Steady SA-RANS | CFL=%.2f | max_steps=%d | OpenMP threads=%d | thread_policy=%s\n",
-                options.cfl, options.max_steps, omp_get_max_threads(), thread_policy);
-    solve_steady_rans();
-    if (std::fflush(stdout) != 0)
-      throw std::runtime_error("Failed to flush the run log");
+    if(!config::load(argc == 2 ? argv[1] : "config.json")){
+        return 1;
+    }
+    if(!open_log(cc::testpath.c_str())){
+        return 1;
+    }
+    printf("Steady SA-RANS | CFL=%.2f | max_steps=%lld | OpenMP threads=%d | thread_policy=%s\n",
+           fatime::CFL,cc::max_step,omp_get_max_threads(),thread_policy);
+    if(!readmesh(cc::meshpath.c_str())){
+        return 1;
+    }
+    if(!geometrymain()){
+        return 1;
+    }
+    allcell sad(cell);
+    std_initialize();
+    allcell cell.form_conservative();
+    if(!solve()){
+        return 1;
+    }
     return 0;
-  } catch (const std::exception& error) {
-    std::fprintf(stderr, "Error: %s\n", error.what());
-    return 1;
-  }
 }
