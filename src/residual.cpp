@@ -1,7 +1,5 @@
 #include "residual.h"
 #include "classconfig.h"
-#include "physic.h"
-#include "udf.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -14,6 +12,8 @@ namespace {
     std::vector<std::array<double,fields>> former; // 上次检查时的状态
     bool first = true;
     double max_update[fields] = {};
+    double first_update[fields] = {}; // 首次检查时的最大变化量
+    bool have_first = false;
 }
 
 void report_update(int step){
@@ -68,16 +68,21 @@ void report_update(int step){
     printf("  #%d(%.4f,%.4f)\n",worst_cell,cell.center.x,cell.center.y);
 }
 
-double relative_update(){
-    double rho = FAR_DEFINE.p/(cc::R*FAR_DEFINE.T);
-    double U = std::max(std::hypot(FAR_DEFINE.u,FAR_DEFINE.v),1e-20);
-    double scale[fields] = {rho,U,U,cc::Cv*FAR_DEFINE.T,
-                            3.0*sutherland::dynamic_viscosity(FAR_DEFINE.T)/rho};
-    double maximum = 0.0;
-    for(int s=0;s<fields;s++){
-        maximum = std::max(maximum,max_update[s]/scale[s]);
+double worst_drop(){
+    // 收敛判据只看流动方程(rho,u,v,e), 湍流工作变量 miubl 不参与
+    constexpr int checked = fields - 1;
+    if(!have_first){
+        for(int s=0;s<checked;s++){
+            first_update[s] = max_update[s];
+        }
+        have_first = true;
+        return 1.0;
     }
-    return maximum;
+    double worst = 0.0;
+    for(int s=0;s<checked;s++){
+        worst = std::max(worst,max_update[s]/std::max(first_update[s],1e-300));
+    }
+    return worst;
 }
 
 }

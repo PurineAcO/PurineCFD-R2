@@ -54,6 +54,19 @@ bool positive(const Json& object,const char* key,double& out){
     return true;
 }
 
+bool number(const Json& object,const char* key,double& out){
+    const auto item = object.find(key);
+    if(item == object.end() || !item->is_number()){
+        return fail(std::string(key) + " must be a number");
+    }
+    const double value = item->get<double>();
+    if(!std::isfinite(value)){
+        return fail(std::string(key) + " must be finite");
+    }
+    out = value;
+    return true;
+}
+
 bool count(const Json& object,const char* key,int& out){
     double value = 0.0;
     if(!positive(object,key,value)){
@@ -124,7 +137,7 @@ bool config::load(const char* path){
     const Json& far = root.at("farfield");
     if(!keys(io,{"mesh","log","field"}) ||
        !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"}) ||
-       !keys(far,{"Ma","T","p"})){
+       !keys(far,{"Ma","T","p","alpha"})){
         return false;
     }
     std::error_code error;
@@ -152,13 +165,17 @@ bool config::load(const char* path){
     if(conv_interval < 2){
         return fail("convergence_interval must be at least 2");
     }
-    double cfl = 0.0,ma = 0.0,T = 0.0,p = 0.0;
+    double cfl = 0.0,ma = 0.0,T = 0.0,p = 0.0,alpha = 0.0;
     if(!positive(solver,"cfl",cfl) || !positive(far,"Ma",ma) ||
-       !positive(far,"T",T) || !positive(far,"p",p)){
+       !positive(far,"T",T) || !positive(far,"p",p) ||
+       !number(far,"alpha",alpha)){
         return false;
     }
     if(ma >= 1.0){
         return fail("This solver requires a subsonic farfield: 0 < Ma < 1");
+    }
+    if(std::abs(alpha) >= 90.0){
+        return fail("The farfield angle of attack must satisfy |alpha| < 90 degrees");
     }
     const double u_inf = ma*get_sonic_velocity(T);
     const double rho_inf = p/(cc::R*T);
@@ -172,8 +189,9 @@ bool config::load(const char* path){
     fatime::CFL = cfl;
     dump_step = dump_interval;
     conv_step = conv_interval;
-    FAR_DEFINE.u = u_inf;
-    FAR_DEFINE.v = 0.0;
+    const double rad = alpha*(std::acos(-1.0)/180.0);
+    FAR_DEFINE.u = u_inf*std::cos(rad);
+    FAR_DEFINE.v = u_inf*std::sin(rad);
     FAR_DEFINE.T = T;
     FAR_DEFINE.p = p;
     return true;

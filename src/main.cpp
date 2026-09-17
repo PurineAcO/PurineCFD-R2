@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdio>
 #include <omp.h>
 #include "boundary.h"
@@ -97,7 +98,6 @@ static bool solve(){
     int step = 0;
     int dumped = 0;
     bool converged = false;
-    double res_init = -1.0;
     if(!dump_field(0)){
         return false;
     }
@@ -125,12 +125,10 @@ static bool solve(){
             dumped = step;
         }
         if(step % config::conv_step == 0){
-            double res = res::relative_update();
-            if(res_init < 0.0){
-                res_init = res;
-            }
-            if(res <= res_init*1e-4 && res < 1e-6){
-                printf("Converged at step %d, relative_update=%.6e\n",step,res);
+            double drop = res::worst_drop();
+            if(drop <= res::drop_target){
+                printf("Converged at step %d, every field dropped at least %.1f decades\n",
+                       step,-std::log10(drop));
                 converged = true;
                 break;
             }
