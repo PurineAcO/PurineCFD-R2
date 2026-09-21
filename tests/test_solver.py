@@ -8,11 +8,13 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+BINARY = 'purinecfd.exe' if os.name == 'nt' else 'purinecfd'
+AFFINITY = sys.platform.startswith('linux')
 
 
 @pytest.fixture(scope='session')
 def executable():
-  path = Path(os.environ.get('PURINECFD_BIN', ROOT / 'build/purinecfd')).resolve()
+  path = Path(os.environ.get('PURINECFD_BIN', ROOT / 'build' / BINARY)).resolve()
   assert path.is_file(), f'Build the solver first or set PURINECFD_BIN: {path}'
   return path
 
@@ -195,6 +197,7 @@ def test_log_cannot_overwrite_mesh(executable, mesh, tmp_path):
   assert mesh.read_bytes() == before
 
 
+@pytest.mark.skipif(not AFFINITY, reason='requires Linux CPU affinity interfaces')
 def test_auto_threads_respect_affinity(executable, mesh, tmp_path):
   cpu = min(os.sched_getaffinity(0))
   result = run_case(executable, tmp_path / 'one-core', settings(mesh), threads=None, affinity={cpu})
@@ -203,6 +206,7 @@ def test_auto_threads_respect_affinity(executable, mesh, tmp_path):
   assert 'OpenMP threads=1 | thread_policy=available-physical-cores' in log
 
 
+@pytest.mark.skipif(not AFFINITY, reason='requires Linux CPU affinity interfaces')
 def test_auto_threads_do_not_count_smt_twice(executable, mesh, tmp_path):
   allowed = os.sched_getaffinity(0)
   pair = None

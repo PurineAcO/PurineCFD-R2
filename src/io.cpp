@@ -5,31 +5,60 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#ifdef _WIN32
+#include <direct.h>
+#else
 #include <sys/stat.h>
+#endif
 
 namespace {
+
+bool is_separator(char c){
+#ifdef _WIN32
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
+bool make_dir(const std::string& path){
+#ifdef _WIN32
+    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+#else
+    return mkdir(path.c_str(),0755) == 0 || errno == EEXIST;
+#endif
+}
 
 bool make_dirs(const std::string& path){
     if(path.empty()){
         return true;
     }
-    for(size_t i=1;i<path.size();i++){
-        if(path[i] != '/'){
+    size_t start = 1;
+#ifdef _WIN32
+    if(path.size() >= 2 && path[1] == ':'){
+        start = (path.size() >= 3 && is_separator(path[2])) ? 3 : 2;
+    }
+#endif
+    for(size_t i=start;i<path.size();i++){
+        if(!is_separator(path[i])){
             continue;
         }
-        std::string sub = path.substr(0,i);
-        if(mkdir(sub.c_str(),0755) != 0 && errno != EEXIST){
+        if(!make_dir(path.substr(0,i))){
             return false;
         }
     }
-    return mkdir(path.c_str(),0755) == 0 || errno == EEXIST;
+    return make_dir(path);
 }
 
 }
 
 bool open_log(const char* path){
     std::string text(path);
-    size_t slash = text.find_last_of('/');
+#ifdef _WIN32
+    const size_t slash = text.find_last_of("/\\");
+#else
+    const size_t slash = text.find_last_of('/');
+#endif
     if(slash != std::string::npos && slash != 0 && !make_dirs(text.substr(0,slash))){
         fprintf(stderr,"Error: cannot create log directory for %s\n",path);
         return false;

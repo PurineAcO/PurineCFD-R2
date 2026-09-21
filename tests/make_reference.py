@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BINARY = 'purinecfd.exe' if os.name == 'nt' else 'purinecfd'
 PROBES = [0, 16, 32, 48, 64, 96, 127, 128, 512, 1024, 2048, 4096, 8192, 12287]
 COLUMNS = ['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'nu_tilde']
 DESCRIPTION = '200 iterations of the steady SA-RANS solver with the C5 compressibility term, 128 x 96 cylinder mesh, CFL=1'
@@ -30,7 +31,7 @@ def main():
   environment = dict(os.environ)
   environment['OMP_NUM_THREADS'] = '1'
   subprocess.run(
-    [str(ROOT / 'build' / 'purinecfd'), str(work / 'config.json')],
+    [str(ROOT / 'build' / BINARY), str(work / 'config.json')],
     cwd=work,
     env=environment,
     check=True,

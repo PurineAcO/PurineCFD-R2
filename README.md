@@ -4,13 +4,25 @@
 
 ## 构建与运行
 
-依赖 Linux、GCC（C++17/OpenMP）、CMake ≥3.16、Python ≥3.10。nlohmann/json 3.11.3 随源码提供。
+依赖支持 C++17 与 OpenMP 的编译器（GCC ≥9、Clang、MSVC）、CMake ≥3.16、Python ≥3.10。nlohmann/json 3.11.3 随源码提供。除 OpenMP 外无第三方依赖；目录创建与物理核心探测在 POSIX 和 Windows 下分别走各自的分支，其余代码平台无关。GCC 8 的 `<filesystem>` 实现不完整，`config.cpp` 需要 GCC ≥9。
+
+POSIX 平台（GCC/Clang）：
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPURINE_NATIVE=ON -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 cmake --build build -j 8
 python3 cases/cylinder/generate_case.py
 ./build/purinecfd config.json
+```
+
+Windows（Clang + libomp；`CMAKE_PREFIX_PATH` 指向 LLVM 安装目录，使其找到 `libomp`）：
+
+```powershell
+cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_CXX_COMPILER="<LLVM>/bin/clang++.exe" -DCMAKE_PREFIX_PATH="<LLVM>"
+cmake --build build -j 8
+python cases/cylinder/generate_case.py
+.\build\purinecfd.exe config.json
 ```
 
 配置见 [config.json](config.json)，分为 `io`、`solver`、`farfield` 三部分。字段全部必填；未知字段、重复键和无效值会报错。文件路径相对于配置文件解析。`farfield.alpha` 是以度为单位、从 +x 方向逆时针为正的来流迎角，取值需满足 `|alpha| < 90`。
@@ -31,7 +43,7 @@ python3 cases/cylinder/generate_case.py
 | 6 | [dissipation.cpp](src/dissipation.cpp)、[SA.cpp](src/SA.cpp) | 人工耗散和湍流模型分别加入哪些项？ |
 | 7 | [timarch.cpp](src/timarch.cpp)、[residual.cpp](src/residual.cpp)、[io.cpp](src/io.cpp) | 时间步怎样确定？何时停止？结果怎样输出？ |
 
-配置解析和线程设置分别在 `config.cpp`、`parallel.cpp`；边界条件参数在 `udf.h`。
+配置解析和线程设置分别在 `config.cpp`、`parallel.cpp`；前者用 `std::filesystem` 归一化配置中的相对路径，后者按平台统计物理核心（POSIX 下读 `sched_getaffinity` 与 `/sys` 拓扑，Windows 下用 `GetProcessAffinityMask` 与 `GetLogicalProcessorInformationEx`），SMT 不重复计数。边界条件参数在 `udf.h`。
 
 ## 数值约定
 
@@ -79,5 +91,7 @@ uv run ruff format --check cases tests
 clang-format --dry-run --Werror include/*.h src/*.cpp
 PURINECFD_BIN="$PWD/build/purinecfd" uv run pytest -q
 ```
+
+`PURINECFD_BIN` 省略时按平台取 `build/purinecfd`（POSIX）或 `build/purinecfd.exe`（Windows）。两个断言自动线程数与 CPU 亲和性关系的用例依赖 Linux 的亲和接口，在其它平台会被跳过。
 
 构建启用严格编译警告。`-DPURINE_SANITIZE=ON` 启用 ASan/UBSan。测试覆盖数值回归、线程一致性、输入校验和错误报告。

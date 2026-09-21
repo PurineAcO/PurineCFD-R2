@@ -14,6 +14,10 @@ target_compile_features(purinecfd PRIVATE cxx_std_17)
 target_include_directories(purinecfd PRIVATE include)
 target_include_directories(purinecfd SYSTEM PRIVATE third_party)
 target_link_libraries(purinecfd PRIVATE OpenMP::OpenMP_CXX)
+if(WIN32)
+  # fopen/freopen/getenv 在 MSVC 运行库下被标记为废弃, 这里继续使用标准 C 接口。
+  target_compile_definitions(purinecfd PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 # Flow validity is checked explicitly; the solver does not inspect libm errno.
 target_compile_options(purinecfd PRIVATE -Wall -Wextra -Wpedantic -Werror -fno-math-errno)
 
