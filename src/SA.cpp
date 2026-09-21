@@ -1,4 +1,5 @@
 #include "SA.h"
+#include "config.h"
 #include "physic.h"
 #include <cmath>
 
@@ -49,7 +50,11 @@ double source_SA(const cc::cell_class& cell){
                          cell.tur.miubl*cell.tur.miubl*(1.0/(cell.tur.sad*cell.tur.sad));
     double gradient_source = SA::Cb2*SA::inv_sigma*cell.phy.rho*
                              cc::dot(cell.tur.miublgrad,cell.tur.miublgrad);
-    return production - destruction + gradient_source;
+    // 部分论文中引入了可压缩性修正
+    double S2 = 2*cell.phy.ugrad.x*cell.phy.ugrad.x + 2*cell.phy.vgrad.y*cell.phy.vgrad.y + 
+                (cell.phy.ugrad.y + cell.phy.vgrad.x)*(cell.phy.ugrad.y + cell.phy.vgrad.x);
+    double compressible = SA::C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * S2 / (cc::gamma * cc::R * cell.phy.T);
+    return production - destruction + gradient_source - compressible;
 }
 
 }

@@ -15,6 +15,7 @@ namespace SA {
     inline constexpr double rmax = 10.0;
     inline constexpr double relax = 0.5;    // 湍流方程欠松弛因子
     inline constexpr double Prt = 0.9;
+    inline constexpr double C5 = 3.5;
 
     // 形成湍流扩散项和黏性通量
     void diffusion_SA(cc::face_class& face);
