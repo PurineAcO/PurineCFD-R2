@@ -19,19 +19,19 @@ python3 cases/cylinder/generate_case.py
 
 ## 按什么顺序读代码
 
-`include/` 放数据定义和函数声明，`src/` 放实现。建议先读数据结构，再沿迭代主线阅读公式。
+代码全部在 `src/` 下：每个模块一个 `.hpp`，数据定义与实现合并在同一个文件里，`main.cpp` 是整个程序唯一的翻译单元。建议先读数据结构，再沿迭代主线阅读公式。
 
 | 顺序 | 文件 | 关注的问题 |
 | --- | --- | --- |
-| 1 | [config.h](include/config.h)、[classconfig.h](include/classconfig.h) | `vec2`、`physics`、`turbulence`、`dissipation` 各存什么？一个单元、一个面分别保存什么？ |
+| 1 | [config.hpp](src/config.hpp)、[classconfig.hpp](src/classconfig.hpp) | `vec2`、`physics`、`turbulence`、`dissipation` 各存什么？一个单元、一个面分别保存什么？ |
 | 2 | [main.cpp](src/main.cpp) | 程序如何启动？`solve()` 里一个伪时间步和一个 RK 阶段做哪些事？ |
-| 3 | [readmesh.cpp](src/readmesh.cpp)、[geometry.cpp](src/geometry.cpp) | 如何读入并连接网格，计算面积、中心和面法向？ |
-| 4 | [physic.cpp](src/physic.cpp)、[initialize.cpp](src/initialize.cpp)、[boundary.cpp](src/boundary.cpp) | 如何计算空气物性，初始化来流，施加壁面及远场条件？ |
-| 5 | [interpolate.cpp](src/interpolate.cpp)、[grad.cpp](src/grad.cpp)、[convect.cpp](src/convect.cpp) | 如何由面值求梯度，并汇总穿过单元边界的通量？ |
-| 6 | [dissipation.cpp](src/dissipation.cpp)、[SA.cpp](src/SA.cpp) | 人工耗散和湍流模型分别加入哪些项？ |
-| 7 | [timarch.cpp](src/timarch.cpp)、[residual.cpp](src/residual.cpp)、[io.cpp](src/io.cpp) | 时间步怎样确定？何时停止？结果怎样输出？ |
+| 3 | [readmesh.hpp](src/readmesh.hpp)、[geometry.hpp](src/geometry.hpp) | 如何读入并连接网格，计算面积、中心和面法向？ |
+| 4 | [physic.hpp](src/physic.hpp)、[initialize.hpp](src/initialize.hpp)、[boundary.hpp](src/boundary.hpp) | 如何计算空气物性，初始化来流，施加壁面及远场条件？ |
+| 5 | [interpolate.hpp](src/interpolate.hpp)、[grad.hpp](src/grad.hpp)、[convect.hpp](src/convect.hpp) | 如何由面值求梯度，并汇总穿过单元边界的通量？ |
+| 6 | [dissipation.hpp](src/dissipation.hpp)、[SA.hpp](src/SA.hpp) | 人工耗散和湍流模型分别加入哪些项？ |
+| 7 | [timarch.hpp](src/timarch.hpp)、[residual.hpp](src/residual.hpp)、[io.hpp](src/io.hpp) | 时间步怎样确定？何时停止？结果怎样输出？ |
 
-配置解析和线程设置分别在 `config.cpp`、`parallel.cpp`；边界条件参数在 `udf.h`。
+配置解析和线程设置分别在 `config.hpp`、`parallel.hpp`；边界条件参数在 `udf.hpp`。
 
 ## 数值约定
 
@@ -39,7 +39,7 @@ python3 cases/cylinder/generate_case.py
 - 面的 `nor = n*Δs` 包含面长 Δs。单元用 `fnorm` 把固定面法向转换成自己的外法向。
 - Green–Gauss 梯度为 `∇φ = Σf(φf*n_f*Δs_f)/V`，这里的 `V` 是二维单元面积（`vol`），按单位厚度计。
 - 每阶段按 `Qᵏ = Qⁿ − αk*Δt*R(Qᵏ⁻¹)` 更新，`Qⁿ` 始终是本步开始时的状态。系数依次为 `1/4、1/6、3/8、1/2、1`。
-- `tur.miubl` 是 SA 工作变量 ν̃，湍流运动黏度为 `νt = ν̃*fv1`；`tur.sad` 是到最近壁面中点的距离。`SA.cpp` 中的源项按产生、破坏、梯度平方三项展开。
+- `tur.miubl` 是 SA 工作变量 ν̃，湍流运动黏度为 `νt = ν̃*fv1`；`tur.sad` 是到最近壁面中点的距离。`SA.hpp` 中的源项按产生、破坏、梯度平方三项展开。
 
 `main.cpp` 的 `solve()` 里，每个 RK 阶段依次：恢复原始量（`reform`/`form_physic`）→ 壁面与远场边界 → 面插值 → 单元梯度与 JST 激波检测 → 面梯度与通量 → 单元汇总与湍流方程 → 统一推进守恒量。OpenMP 循环末尾的同步保证相邻单元读取的是同一阶段数据；面插值只由 `nei[0]` 所属的单元负责，保证每个面只被一个线程写一次。壁面距离 `tur.sad` 在初始化时算一次。
 
@@ -76,7 +76,7 @@ Error: Invalid flow state at step 37, function rk_stage, cell #1 (0.502703,0.012
 ```sh
 uv run ruff check cases tests
 uv run ruff format --check cases tests
-clang-format --dry-run --Werror include/*.h src/*.cpp
+clang-format --dry-run --Werror src/*.hpp src/*.cpp
 PURINECFD_BIN="$PWD/build/purinecfd" uv run pytest -q
 ```
 

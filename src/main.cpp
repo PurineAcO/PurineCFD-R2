@@ -1,21 +1,21 @@
 #include <cmath>
 #include <cstdio>
 #include <omp.h>
-#include "boundary.h"
-#include "classconfig.h"
-#include "config.h"
-#include "convect.h"
-#include "dissipation.h"
-#include "geometry.h"
-#include "grad.h"
-#include "initialize.h"
-#include "interpolat.h"
-#include "io.h"
-#include "parallel.h"
-#include "readmesh.h"
-#include "residual.h"
-#include "SA.h"
-#include "timarch.h"
+#include "config.hpp"
+#include "classconfig.hpp"
+#include "parallel.hpp"
+#include "readmesh.hpp"
+#include "geometry.hpp"
+#include "initialize.hpp"
+#include "boundary.hpp"
+#include "interpolate.hpp"
+#include "grad.hpp"
+#include "convect.hpp"
+#include "dissipation.hpp"
+#include "SA.hpp"
+#include "timarch.hpp"
+#include "residual.hpp"
+#include "io.hpp"
 
 #define allcell for(cc::cell_class& cell : cc::CellList)
 

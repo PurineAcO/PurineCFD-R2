@@ -4,3 +4,7 @@ CompileFlags:
   Add:
     # clang does not pick up GCC's internal include dir, which is where omp.h lives.
     - -isystem/usr/lib/gcc/x86_64-linux-gnu/13/include
+    # CMake omits -std because GCC 13 already defaults to gnu++17; clang does not.
+    - -std=c++17
+    # Do not truncate the diagnostic list, so the first real error stays visible.
+    - -ferror-limit=0
