@@ -1,20 +1,25 @@
 #pragma once
 
 #include "classconfig.hpp"
+#include "config.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 // 加载网格
 bool readmesh(const char* path);
 // 建立邻接关系
 bool linkmesh();
+// 结构化邻接表读取
+bool link_structed_mesh();
 
 namespace {
 
@@ -203,6 +208,7 @@ inline bool readmesh(const char* path){
         return mesh_fail("unexpected data after cell section");
     }
     printf("Mesh: nodes=%d faces=%d cells=%d\n",node_count,cc::face_num,cc::cell_num);
+    input.close();
     return true;
 }
 
@@ -233,5 +239,56 @@ inline bool linkmesh(){
         return false;
     }
     printf("Boundaries: wall=%zu farfield=%zu\n",cc::WallFaces.size(),cc::FarFaces.size());
+    return true;
+}
+
+struct three_num_table{int n;int s;int cell;}; // 结构化网格三大组
+
+inline bool link_structed_mesh(){
+    FILE* adj = fopen(structer::adjacency.c_str(),"r");
+    if(adj == nullptr){
+        fprintf(stderr,"Error: cannot open adjacency table: %s\n",structer::adjacency.c_str());
+        return false;
+    }
+
+    fscanf(adj,"%d %d",&structer::S_MAX,&structer::N_MAX);
+    const int smax = structer::S_MAX,nmax = structer::N_MAX;
+    if(smax*nmax != cc::cell_num){
+        fprintf(stderr,"Error: adjacency header %dx%d does not match %d cells\n",
+                smax,nmax,cc::cell_num);
+        fclose(adj);
+        return false;
+    }
+
+    for(int row=0;row<cc::cell_num;row++){
+        three_num_table entry{};
+        fscanf(adj,"%d,%d,%d",&entry.s,&entry.n,&entry.cell);
+        cc::cell_class& cell = cc::gotocell(entry.cell);
+        cell.s = entry.s;
+        cell.n = entry.n;
+    }
+    fclose(adj);
+
+    for(cc::cell_class& cell : cc::CellList){
+        for(int i=0;i<cell.ecnt;i++){
+            cc::cell_class* other = cell.nei[i];
+            if(other == nullptr){
+                if(cell.faces[i]->type == cc::WALL){cell.south = i;}
+                else{cell.north = i;}
+                continue;
+            }
+            const int ds = ((other->s - cell.s) % smax + smax) % smax;
+            const int dn = other->n - cell.n;
+            if(ds == 1){cell.east = i;}
+            else if(ds == smax-1){cell.west = i;}
+            else if(dn == 1){cell.north = i;}
+            else if(dn == -1){cell.south = i;}
+        }
+        cell.eastf = cell.faces[cell.east];
+        cell.westf = cell.faces[cell.west];
+        cell.northf = cell.faces[cell.north];
+        cell.southf = cell.faces[cell.south];
+    }
+    printf("Structured: %d x %d\n",smax,nmax);
     return true;
 }

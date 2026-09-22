@@ -24,7 +24,11 @@ def main():
     [sys.executable, str(ROOT / 'cases/cylinder/generate_case.py'), str(work)], check=True
   )
   config = json.loads((ROOT / 'config.json').read_text())
-  config['io'] = {'mesh': str(work / 'mesh.txt'), 'log': 'run.log', 'field': 'field'}
+  config['io'] = {
+    'mesh': str(work / 'mesh.txt'),
+    'log': 'run.log',
+    'field': 'field',
+  }
   config['solver']['max_steps'] = 200
   (work / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
   environment = dict(os.environ)

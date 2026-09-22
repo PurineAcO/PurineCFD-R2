@@ -5,6 +5,7 @@
 #include "classconfig.hpp"
 #include "parallel.hpp"
 #include "readmesh.hpp"
+#include "HALO.hpp"
 #include "geometry.hpp"
 #include "initialize.hpp"
 #include "boundary.hpp"
@@ -50,6 +51,7 @@ static bool rk_stage(double rk,int step){
     if(!check_field("recover_flow",step)){
         return false;
     }
+    update_ghost_field();
     slip_wall_boundary();
     far_field_boundary();
 #pragma omp parallel for schedule(static)
@@ -167,6 +169,7 @@ int main(int argc,char** argv){
     allcell sad(cell);
     std_initialize();
     allcell cell.form_conservative();
+    HALO_structer_mesh();
     if(!solve()){
         return 1;
     }

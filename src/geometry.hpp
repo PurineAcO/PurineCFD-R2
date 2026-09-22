@@ -105,6 +105,10 @@ inline bool geometrymain(){
     if(!linkmesh()){
         return false;
     }
+    // 带结构化邻接表时, 在面邻接已建立后补齐东西南北四个方向
+    if(structer::ifstructer && !link_structed_mesh()){
+        return false;
+    }
     for(cc::cell_class& cell : cc::CellList){
         findnode(cell);
         volume(cell);

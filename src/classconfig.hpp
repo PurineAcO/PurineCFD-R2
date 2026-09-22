@@ -68,6 +68,14 @@ struct cell_class{
     double localdt = 0.0;        // 当地时间步长
     turbulence tur;              // 湍流
 
+    // 用于结构化网格选项
+    short east = -1,west = -1,north = -1,south = -1; // 东/西/南/北侧面在本格 faces 中的下标
+    face_class* eastf = nullptr;  // 东侧邻接面
+    face_class* westf = nullptr;  // 西侧邻接面
+    face_class* northf = nullptr; // 北侧邻接面
+    face_class* southf = nullptr; // 南侧邻接面
+    int s = 0,n = 0;              // 环向/径向索引
+
     cell_class() = default;
     cell_class(int index_,int f1_,int f2_,int f3_,int f4_);// 网格构造器
 
@@ -85,6 +93,7 @@ struct cell_class{
 
 inline std::vector<node_class> NodeList;    // 节点
 inline std::vector<cell_class> CellList;    // 网格
+inline std::vector<cell_class> GhostList;   // 虚网格
 inline std::vector<face_class> FaceList;    // 面
 inline std::vector<face_class*> WallFaces;  // 壁面
 inline std::vector<face_class*> FarFaces;   // 远场
