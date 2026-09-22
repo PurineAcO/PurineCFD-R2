@@ -30,7 +30,11 @@ def mesh(tmp_path_factory):
 
 def settings(mesh):
   config = json.loads((ROOT / 'config.json').read_text())
-  config['io'] = {'mesh': str(mesh), 'log': 'run.log', 'field': 'field'}
+  config['io'] = {
+    'mesh': str(mesh),
+    'log': 'run.log',
+    'field': 'field',
+  }
   config['solver']['max_steps'] = 3
   return config
 

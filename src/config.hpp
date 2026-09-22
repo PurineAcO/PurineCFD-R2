@@ -75,37 +75,52 @@ namespace cc {
 
 }
 
-// 伪时间步参数, config::load 要写它, 而 timarch 依赖 cc 的完整类型, 所以定义放这里
+// 伪时间步参数
 namespace fatime {
     inline double CFL = 1.0;
 }
 
+// 求解设置
 namespace config {
     inline bool load(const char* path = "config.json"); // 读取config.json
     inline int dump_step = 1;   // 场输出间隔
     inline int conv_step = 1;   // 残差检查间隔
 }
 
+// 结构化网格参数
+namespace structer{
+    inline bool ifstructer = false; // 结构化网格令牌
+    inline std::string adjacency;   // 结构化邻接表路径
+    inline int S_MAX = 0;           // 环向单元数, 由邻接表表头给出
+    inline int N_MAX = 0;           // 径向单元数, 由邻接表表头给出
+    inline constexpr int HALO = 3;  // HALO网格层数
+}
+
+/*
+Json 读取部分
+*/
+
 // 这两个模块依赖 cc 的基础类型, 必须在类型定义之后包含
 #include "physic.hpp"
 #include "udf.hpp"
 
-namespace {
-
 using Json = nlohmann::json;
 
-inline bool fail(const std::string& msg){
+static bool fail(const std::string& msg){
     fprintf(stderr,"Error: %s\n",msg.c_str());
     return false;
 }
 
-inline bool keys(const Json& object,std::initializer_list<const char*> allowed){
+// 校验对象的键: 不在白名单内的报错, 必填键缺失也报错; optional 里的键可以缺席
+static bool keys(const Json& object,std::initializer_list<const char*> allowed,
+                 std::initializer_list<const char*> optional = {}){
     if(!object.is_object()){
         return fail("expected a configuration object");
     }
     const std::set<std::string> names(allowed.begin(),allowed.end());
+    const std::set<std::string> extra(optional.begin(),optional.end());
     for(const auto& item : object.items()){
-        if(!names.count(item.key())){
+        if(!names.count(item.key()) && !extra.count(item.key())){
             return fail("unknown configuration key: " + item.key());
         }
     }
@@ -117,7 +132,8 @@ inline bool keys(const Json& object,std::initializer_list<const char*> allowed){
     return true;
 }
 
-inline bool positive(const Json& object,const char* key,double& out){
+// 读取一个有限的数, 要求为正
+static bool positive(const Json& object,const char* key,double& out){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_number()){
         return fail(std::string(key) + " must be a number");
@@ -130,7 +146,8 @@ inline bool positive(const Json& object,const char* key,double& out){
     return true;
 }
 
-inline bool number(const Json& object,const char* key,double& out){
+// 读取一个有限的数, 符号不限
+static bool number(const Json& object,const char* key,double& out){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_number()){
         return fail(std::string(key) + " must be a number");
@@ -143,7 +160,8 @@ inline bool number(const Json& object,const char* key,double& out){
     return true;
 }
 
-inline bool count(const Json& object,const char* key,int& out){
+// 读取一个正整数, 按 32 位整数处理
+static bool count(const Json& object,const char* key,int& out){
     double value = 0.0;
     if(!positive(object,key,value)){
         return false;
@@ -155,7 +173,8 @@ inline bool count(const Json& object,const char* key,int& out){
     return true;
 }
 
-inline bool path_value(const Json& object,const char* key,const std::filesystem::path& base,
+// 读取路径字符串, 相对配置文件所在目录解析并做规范化
+static bool path_value(const Json& object,const char* key,const std::filesystem::path& base,
                 std::string& out,std::error_code& error){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_string()){
@@ -173,13 +192,13 @@ inline bool path_value(const Json& object,const char* key,const std::filesystem:
     return true;
 }
 
-}
-
 inline bool config::load(const char* path){
+    // 打开配置文件
     std::ifstream stream(path);
     if(!stream){
         return fail("Cannot open configuration: " + std::string(path));
     }
+    // 解析过程中逐层记录已出现的键, 用来发现重复键与过深嵌套
     std::vector<std::set<std::string>> object_keys;
     bool malformed = false;
     auto callback = [&](int depth,Json::parse_event_t event,Json& parsed){
@@ -205,17 +224,20 @@ inline bool config::load(const char* path){
     if(malformed){
         return fail("Duplicate configuration key or too deep nesting");
     }
+    // 顶层只允许 io / solver / farfield 三节
     if(!keys(root,{"io","solver","farfield"})){
         return false;
     }
     const Json& io = root.at("io");
     const Json& solver = root.at("solver");
     const Json& far = root.at("farfield");
-    if(!keys(io,{"mesh","log","field"}) ||
+    // 各节的键白名单; io 的 structured 只在网格带结构化信息时出现
+    if(!keys(io,{"mesh","log","field"},{"structured"}) ||
        !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"}) ||
        !keys(far,{"Ma","T","p","alpha"})){
         return false;
     }
+    // 所有文件路径都相对配置文件所在目录解析
     std::error_code error;
     std::filesystem::path base = std::filesystem::path(path).parent_path();
     if(base.empty()){
@@ -227,11 +249,20 @@ inline bool config::load(const char* path){
        !path_value(io,"field",base,field_path,error)){
         return false;
     }
+    // structured 给出结构化邻接表路径并置起令牌; 缺省表示网格不带结构化信息
+    if(io.contains("structured")){
+        structer::ifstructer = true;
+        if(!path_value(io,"structured",base,structer::adjacency,error)){
+            return false;
+        }
+    }
+    // 日志不得覆盖任何输入文件
     const std::string config_path =
         std::filesystem::absolute(path,error).lexically_normal().string();
     if(log_path == mesh_path || log_path == config_path){
         return fail("The log path must not overwrite an input file");
     }
+    // 求解器参数
     int max_steps = 0,dump_interval = 0,conv_interval = 0;
     if(!count(solver,"max_steps",max_steps) ||
        !count(solver,"dump_interval",dump_interval) ||
@@ -241,6 +272,7 @@ inline bool config::load(const char* path){
     if(conv_interval < 2){
         return fail("convergence_interval must be at least 2");
     }
+    // 来流条件
     double cfl = 0.0,ma = 0.0,T = 0.0,p = 0.0,alpha = 0.0;
     if(!positive(solver,"cfl",cfl) || !positive(far,"Ma",ma) ||
        !positive(far,"T",T) || !positive(far,"p",p) ||
@@ -258,6 +290,7 @@ inline bool config::load(const char* path){
     if(!std::isfinite(u_inf) || !std::isfinite(rho_inf) || rho_inf <= 0.0){
         return fail("Farfield values produce an invalid thermodynamic state");
     }
+    // 全部校验通过后再一次性写入全局状态
     cc::meshpath = mesh_path;
     cc::testpath = log_path;
     cc::fieldpath = field_path;

@@ -13,7 +13,7 @@ python3 cases/cylinder/generate_case.py
 ./build/purinecfd config.json
 ```
 
-配置见 [config.json](config.json)，分为 `io`、`solver`、`farfield` 三部分。字段全部必填；未知字段、重复键和无效值会报错。文件路径相对于配置文件解析。`farfield.alpha` 是以度为单位、从 +x 方向逆时针为正的来流迎角，取值需满足 `|alpha| < 90`。
+配置见 [config.json](config.json)，分为 `io`、`solver`、`farfield` 三部分。字段全部必填；未知字段、重复键和无效值会报错。文件路径相对于配置文件解析。`io.structured` 是布尔值：`true` 表示 `io.mesh` 是结构化网格（PLOT3D 单块，拓扑由 i-j 索引隐含），`false` 表示是本求解器的网格格式。`farfield.alpha` 是以度为单位、从 +x 方向逆时针为正的来流迎角，取值需满足 `|alpha| < 90`。
 
 默认按进程可用的物理核心数分配线程，SMT 不重复计数；拓扑读取失败时退回 `omp_get_num_procs()`。`OMP_NUM_THREADS` 可显式设置线程数，自动设置遵守 `OMP_THREAD_LIMIT`。
 

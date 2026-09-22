@@ -1,6 +1,7 @@
 {
   "io": {
     "mesh": "cases/cylinder/mesh.txt",
+    "structured": false,
     "log": "run/run.log",
     "field": "run/field"
   },

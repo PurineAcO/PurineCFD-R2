@@ -18,9 +18,7 @@ void sad(cc::cell_class& cell);
 // 几何分析主程序
 bool geometrymain();
 
-namespace {
-
-inline bool contains_node(int num[],int number){
+static bool contains_node(int num[],int number){
     for(int i=0;i<4;i++){
         if(number == num[i]){
             return true;
@@ -29,18 +27,16 @@ inline bool contains_node(int num[],int number){
     return false;
 }
 
-inline double point_distance(cc::vec2 a,cc::vec2 b){
+static double point_distance(cc::vec2 a,cc::vec2 b){
     return std::sqrt((a.x-b.x)*(a.x-b.x) + (a.y-b.y)*(a.y-b.y));
 }
 
-inline double triangle_area(double x1,double y1,double x2,double y2,double x3,double y3){
+static double triangle_area(double x1,double y1,double x2,double y2,double x3,double y3){
     return std::abs((x2-x1)*(y3-y1) - (x3-x1)*(y2-y1))*0.5;
 }
 
-inline cc::vec2 triangle_center(double x1,double y1,double x2,double y2,double x3,double y3){
+static cc::vec2 triangle_center(double x1,double y1,double x2,double y2,double x3,double y3){
     return {(x1+x2+x3)/3,(y1+y2+y3)/3};
-}
-
 }
 
 inline void findnode(cc::cell_class& cell){
@@ -103,6 +99,10 @@ inline void sad(cc::cell_class& cell){
 
 inline bool geometrymain(){
     if(!linkmesh()){
+        return false;
+    }
+    // 带结构化邻接表时, 在面邻接已建立后补齐东西南北四个方向
+    if(structer::ifstructer && !link_structed_mesh()){
         return false;
     }
     for(cc::cell_class& cell : cc::CellList){
