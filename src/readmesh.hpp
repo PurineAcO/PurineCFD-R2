@@ -21,17 +21,15 @@ bool linkmesh();
 // 结构化邻接表读取
 bool link_structed_mesh();
 
-namespace {
+static std::ifstream input;
+static int line_no = 0;
 
-std::ifstream input;
-int line_no = 0;
-
-inline bool mesh_fail(const std::string& msg){
+static bool mesh_fail(const std::string& msg){
     fprintf(stderr,"Error: mesh line %d: %s\n",line_no,msg.c_str());
     return false;
 }
 
-inline bool next_line(std::string& text){
+static bool next_line(std::string& text){
     if(!std::getline(input,text)){
         return mesh_fail("unexpected end of mesh");
     }
@@ -42,7 +40,7 @@ inline bool next_line(std::string& text){
     return true;
 }
 
-inline bool expect(const char* wanted){
+static bool expect(const char* wanted){
     std::string text;
     if(!next_line(text)){
         return false;
@@ -54,7 +52,7 @@ inline bool expect(const char* wanted){
 }
 
 template <typename... value_type>
-inline bool parse_row(const std::string& text,value_type&... values){
+static bool parse_row(const std::string& text,value_type&... values){
     std::istringstream row(text);
     if(!(row >> ... >> values)){
         return mesh_fail("invalid mesh row");
@@ -64,8 +62,6 @@ inline bool parse_row(const std::string& text,value_type&... values){
         return mesh_fail("unexpected data after mesh row");
     }
     return true;
-}
-
 }
 
 inline bool readmesh(const char* path){

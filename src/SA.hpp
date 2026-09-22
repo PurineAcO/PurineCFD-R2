@@ -27,29 +27,27 @@ namespace SA {
     void SA_equation_RK(cc::cell_class& cell, double rk);
 }
 
-namespace {
-
-inline double viscosity_ratio(double rho,double mu,double miubl){
+static double viscosity_ratio(double rho,double mu,double miubl){
     return rho*(miubl > 0.0 ? miubl : 0.0)/mu;
 }
 
-inline double compute_fv1(double chi){
+static double compute_fv1(double chi){
     return (chi*chi*chi)/(chi*chi*chi + SA::Cv1*SA::Cv1*SA::Cv1);
 }
 
-inline double compute_ft2(double chi){
+static double compute_ft2(double chi){
     return SA::Ct3*std::exp(-SA::Ct4*chi*chi);
 }
 
-inline double compute_fv2(double chi){
+static double compute_fv2(double chi){
     return 1 - chi/(1 + chi*compute_fv1(chi));
 }
 
-inline double compute_g(double r){
+static double compute_g(double r){
     return r + SA::Cw2*(r*r*r*r*r*r - r);
 }
 
-inline double compute_fw(double g){
+static double compute_fw(double g){
     constexpr double cw3_squared = SA::Cw3*SA::Cw3;
     constexpr double cw3_sixth = cw3_squared*cw3_squared*cw3_squared;
     const double g_squared = g*g;
@@ -57,7 +55,7 @@ inline double compute_fw(double g){
     return g*std::pow((1 + cw3_sixth)/(cw3_sixth + g_sixth),1.0/6);
 }
 
-inline double source_SA(const cc::cell_class& cell){
+static double source_SA(const cc::cell_class& cell){
     double mu = sutherland::dynamic_viscosity(cell.phy.T);
     double chi = viscosity_ratio(cell.phy.rho,mu,cell.tur.miubl);
     double ft2 = compute_ft2(chi);
@@ -79,8 +77,6 @@ inline double source_SA(const cc::cell_class& cell){
                 (cell.phy.ugrad.y + cell.phy.vgrad.x)*(cell.phy.ugrad.y + cell.phy.vgrad.x);
     double compressible = SA::C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * S2 / (cc::gamma * cc::R * cell.phy.T);
     return production - destruction + gradient_source - compressible;
-}
-
 }
 
 inline void SA::diffusion_SA(cc::face_class& face){

@@ -17,14 +17,12 @@ namespace res {
 
 namespace res {
 
-namespace {
-    constexpr int fields = 5; // rho,u,v,e,miubl
-    std::vector<std::array<double,fields>> former; // 上次检查时的状态
-    bool first = true;
-    double max_update[fields] = {};
-    double first_update[fields] = {}; // 首次检查时的最大变化量
-    bool have_first = false;
-}
+static constexpr int fields = 5; // rho,u,v,e,miubl
+static std::vector<std::array<double,fields>> former; // 上次检查时的状态
+static bool first = true;
+static double max_update[fields] = {};
+static double first_update[fields] = {}; // 首次检查时的最大变化量
+static bool have_first = false;
 
 inline void report_update(int step){
     if(former.empty()){

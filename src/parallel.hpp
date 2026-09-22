@@ -15,9 +15,7 @@ namespace parallel {
 const char* configure_threads();
 } // namespace parallel
 
-namespace {
-
-inline int physical_cores(){
+static int physical_cores(){
     const int capacity = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
     if(capacity <= 0){
         return 0;
@@ -48,8 +46,6 @@ inline int physical_cores(){
     }
     CPU_FREE(mask);
     return static_cast<int>(cores.size());
-}
-
 }
 
 inline const char* parallel::configure_threads(){

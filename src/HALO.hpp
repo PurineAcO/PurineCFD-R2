@@ -61,18 +61,21 @@ inline void HALO_structer_mesh(){
         }
     }
 
-    // 边界面的空侧接上虚网格
-    for(cc::face_class& face : cc::FaceList){
-        if(face.type == cc::INTER){
-            continue;
-        }
-        const cc::cell_class& cell = *cc::boundary_findcell(&face);
-        cc::cell_class* ghost = (face.type == cc::WALL) ? &ghost_at(0,cell.s)
-                                                        : &ghost_at(3,cell.s);
-        if(face.nei[0] == nullptr){
-            face.nei[0] = ghost;
-        }else{
-            face.nei[1] = ghost;
+    // 边界单元与边界面都接上虚网格
+    for(cc::cell_class& cell : cc::CellList){
+        for(int i=0;i<cell.ecnt;i++){
+            cc::face_class* face = cell.faces[i];
+            if(face->type == cc::INTER){
+                continue;
+            }
+            cc::cell_class* ghost = (face->type == cc::WALL) ? &ghost_at(0,cell.s)
+                                                             : &ghost_at(3,cell.s);
+            cell.nei[i] = ghost;
+            if(face->nei[0] == nullptr){
+                face->nei[0] = ghost;
+            }else{
+                face->nei[1] = ghost;
+            }
         }
     }
 
@@ -105,14 +108,20 @@ inline void update_ghost_field(){
     for(int layer=3;layer<6;layer++){
         for(int s=1;s<=smax;s++){
             cc::cell_class& ghost = ghost_at(layer,s);
+            cc::face_class* reface = ghost.southf;
             ghost.phy.rho = rho_inf;
-            ghost.phy.u = FAR_DEFINE.u;
-            ghost.phy.v = FAR_DEFINE.v;
-            ghost.phy.T = FAR_DEFINE.T;
-            ghost.phy.p = FAR_DEFINE.p;
-            ghost.phy.a = get_sonic_velocity(ghost.phy.T);
-            ghost.phy.e = get_energy(ghost.phy);
+            ghost.phy.u = reface->phy.u;
+            ghost.phy.v = reface->phy.v;
+            ghost.phy.T = reface->phy.T;
+            ghost.phy.p = reface->phy.p;
+            ghost.phy.a = reface->phy.a;
+            ghost.phy.e = reface->phy.e;
             ghost.tur.miubl = miubl_inf;
         }
+    }
+
+    // 耗散项会读邻居的守恒量
+    for(cc::cell_class& ghost : cc::GhostList){
+        ghost.form_conservative();
     }
 }

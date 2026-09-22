@@ -193,9 +193,7 @@ inline face_class* link_face(int number){ return &FaceList[number-1]; }
 
 inline cell_class* link_cell(int number){ return number <= 0 ? nullptr : &CellList[number-1]; }
 
-inline cell_class* boundary_findcell(face_class* face){
-    return face->nei[0] ? face->nei[0] : face->nei[1];
-}
+inline cell_class* boundary_findcell(face_class* face){return face->nei[0] ? face->nei[0] : face->nei[1];}
 
 inline bool field_ok(const cell_class& cell){
     const physics& phy = cell.phy;

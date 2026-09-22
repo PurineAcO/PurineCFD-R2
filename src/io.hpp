@@ -13,9 +13,7 @@ bool open_log(const char* path);
 // 输出流场
 bool dump_field(int step);
 
-namespace {
-
-inline bool make_dirs(const std::string& path){
+static bool make_dirs(const std::string& path){
     if(path.empty()){
         return true;
     }
@@ -29,8 +27,6 @@ inline bool make_dirs(const std::string& path){
         }
     }
     return mkdir(path.c_str(),0755) == 0 || errno == EEXIST;
-}
-
 }
 
 inline bool open_log(const char* path){

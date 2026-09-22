@@ -104,17 +104,15 @@ Json 读取部分
 #include "physic.hpp"
 #include "udf.hpp"
 
-namespace {
-
 using Json = nlohmann::json;
 
-inline bool fail(const std::string& msg){
+static bool fail(const std::string& msg){
     fprintf(stderr,"Error: %s\n",msg.c_str());
     return false;
 }
 
 // 校验对象的键: 不在白名单内的报错, 必填键缺失也报错; optional 里的键可以缺席
-inline bool keys(const Json& object,std::initializer_list<const char*> allowed,
+static bool keys(const Json& object,std::initializer_list<const char*> allowed,
                  std::initializer_list<const char*> optional = {}){
     if(!object.is_object()){
         return fail("expected a configuration object");
@@ -135,7 +133,7 @@ inline bool keys(const Json& object,std::initializer_list<const char*> allowed,
 }
 
 // 读取一个有限的数, 要求为正
-inline bool positive(const Json& object,const char* key,double& out){
+static bool positive(const Json& object,const char* key,double& out){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_number()){
         return fail(std::string(key) + " must be a number");
@@ -149,7 +147,7 @@ inline bool positive(const Json& object,const char* key,double& out){
 }
 
 // 读取一个有限的数, 符号不限
-inline bool number(const Json& object,const char* key,double& out){
+static bool number(const Json& object,const char* key,double& out){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_number()){
         return fail(std::string(key) + " must be a number");
@@ -163,7 +161,7 @@ inline bool number(const Json& object,const char* key,double& out){
 }
 
 // 读取一个正整数, 按 32 位整数处理
-inline bool count(const Json& object,const char* key,int& out){
+static bool count(const Json& object,const char* key,int& out){
     double value = 0.0;
     if(!positive(object,key,value)){
         return false;
@@ -176,7 +174,7 @@ inline bool count(const Json& object,const char* key,int& out){
 }
 
 // 读取路径字符串, 相对配置文件所在目录解析并做规范化
-inline bool path_value(const Json& object,const char* key,const std::filesystem::path& base,
+static bool path_value(const Json& object,const char* key,const std::filesystem::path& base,
                 std::string& out,std::error_code& error){
     const auto item = object.find(key);
     if(item == object.end() || !item->is_string()){
@@ -192,8 +190,6 @@ inline bool path_value(const Json& object,const char* key,const std::filesystem:
     }
     out = full.lexically_normal().string();
     return true;
-}
-
 }
 
 inline bool config::load(const char* path){
