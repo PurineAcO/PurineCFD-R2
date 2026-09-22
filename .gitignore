@@ -1,7 +1,5 @@
 /build*/
 /run/
-# cases/ 下的网格、参数和算例数据都是本地生成或导入的, 不入库
-/cases/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
