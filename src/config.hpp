@@ -41,10 +41,10 @@ namespace cc {
 
     // 物理量矩阵
     struct physics{
-        double rho = 0.0, u = 0.0, v = 0.0; // 密度, x/y方向速度
-        double T = 0.0, a = 0.0;            // 温度, 声速
-        double p = 0.0, e = 0.0;            // 压力, 单位质量总能量
-        vec2 ugrad, vgrad, Tgrad;           // 速度与温度梯度
+        double rho = 0.0, u = 0.0, v = 0.0;
+        double T = 0.0, a = 0.0;
+        double p = 0.0, e = 0.0;
+        vec2 ugrad, vgrad, Tgrad ,rhograd;  // 梯度
     };
 
     // 湍流变量矩阵

@@ -9,7 +9,16 @@
 namespace cc {
 
 struct cell_class;      // 网格
-struct face_class;      // 面
+struct face_class;      // 面、
+
+struct LSCBmatrix{
+    double LU = 0;         // 上三角位置
+    double RD = 0;         // 下三角位置
+    double DC = 0;         // 对称位置
+    double dxi[4] ={};     // delta x
+    double dyi[4] ={};     // delta y
+    double wi[4] = {};     // 范数权
+};
 
 struct node_class{
     int number = 0;         // 节点编号
@@ -29,6 +38,12 @@ struct face_class{
     cell_class* nei[2] = {};       // 面邻接网格指针
     physics phy;                   // 物理量
     turbulence tur;                // 湍流
+    physics lowp;                  // 左插值物理量
+    physics highp;                 // 右插值物理量
+
+    // 结构化网格参数
+    bool iswedir = false;           // 东西面指示
+    cell_class *low,*high;          // 高低侧网格指针
 
     double volflux = 0.0;    // 单位厚度体积流量 (u·n)*Δs
     double lam = 0.0;        // 谱半径 |u·n|*Δs + a*Δs
@@ -67,6 +82,7 @@ struct cell_class{
     dissipation diss;            // 耗散项
     double localdt = 0.0;        // 当地时间步长
     turbulence tur;              // 湍流
+    LSCBmatrix LSCB;             // LSCB梯度预处理矩阵
 
     // 用于结构化网格选项
     short east = -1,west = -1,north = -1,south = -1; // 东/西/南/北侧面在本格 faces 中的下标

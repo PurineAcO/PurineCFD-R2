@@ -284,6 +284,10 @@ inline bool link_structed_mesh(){
         cell.westf = cell.faces[cell.west];
         cell.northf = cell.faces[cell.north];
         cell.southf = cell.faces[cell.south];
+        cell.eastf->iswedir = true;cell.eastf->low = &cell;
+        cell.westf->iswedir = true;cell.westf->high = &cell;
+        cell.northf->iswedir = false;cell.northf->low = &cell;
+        cell.southf->iswedir = false;cell.southf->high = &cell;
     }
     printf("Structured: %d x %d\n",smax,nmax);
     return true;

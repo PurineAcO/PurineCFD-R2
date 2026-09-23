@@ -55,8 +55,8 @@ static bool rk_stage(double rk,int step){
     slip_wall_boundary();
     far_field_boundary();
 #pragma omp parallel for schedule(static)
-    for(int i=0;i<cc::cell_num;i++){
-        interpolate_mid(cc::CellList[i]);
+    for(cc::face_class face : cc::FaceList){
+        face.face_physic_mid();
     }
 #pragma omp parallel for schedule(static)
     for(int i=0;i<cc::cell_num;i++){
