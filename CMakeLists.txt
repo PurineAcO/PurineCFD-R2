@@ -9,7 +9,10 @@ target_compile_features(purinecfd PRIVATE cxx_std_17)
 target_include_directories(purinecfd SYSTEM PRIVATE third_party)
 target_link_libraries(purinecfd PRIVATE OpenMP::OpenMP_CXX)
 # Flow validity is checked explicitly; the solver does not inspect libm errno.
-target_compile_options(purinecfd PRIVATE -Wall -Wextra -Wpedantic -Werror -fno-math-errno)
+# Unused parameters/variables stay warnings: some kernels are still being written.
+target_compile_options(purinecfd PRIVATE -Wall -Wextra -Wpedantic -Werror
+                       -Wno-error=unused-parameter -Wno-error=unused-variable
+                       -fno-math-errno)
 
 option(PURINE_NATIVE "Optimize for the build machine" OFF)
 option(PURINE_SANITIZE "Enable AddressSanitizer and UBSan" OFF)

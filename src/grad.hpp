@@ -3,7 +3,6 @@
 #include "classconfig.hpp"
 #include <cmath>
 #include <cstring>
-#include <string>
 
 // GGCB梯度
 void green_gauss_cell_based(cc::cell_class& cell);
@@ -61,33 +60,31 @@ inline void face_gradient(cc::face_class& face){
 }
 
 inline void least_square_cell_based(cc::cell_class &cell){
-    double LU = 0;double DC = 0;double RD = 0;double BU[4] = {};double BD[4] = {};
+    // 预处理过程在least_square_cell_based_preprocess里,该函数定义在geometry
+    double BU[5] = {};double BD[5] = {};
     for(int i=0;i<cell.ecnt;i++){
-        double weight_i,dx_i,dy_i;
         cc::cell_class *nei = cell.nei[i];
-        dx_i = nei->center.x - cell.center.x;
-        dy_i = nei->center.y - cell.center.y;
-        double dis = dx_i * dx_i + dy_i * dy_i;
-        weight_i = 1.0/(dis*dis);
-        LU += weight_i * dx_i * dx_i;
-        DC += weight_i * dx_i * dy_i;
-        RD += weight_i * dy_i * dy_i;
-        BU[0] += weight_i * dx_i * (nei->phy.u - cell.phy.u);
-        BU[1] += weight_i * dx_i * (nei->phy.v - cell.phy.v);
-        BU[2] += weight_i * dx_i * (nei->phy.T - cell.phy.T);
-        BU[3] += weight_i * dx_i * (nei->tur.miubl - cell.tur.miubl);
-        BD[0] += weight_i * dy_i * (nei->phy.u - cell.phy.u);
-        BD[1] += weight_i * dy_i * (nei->phy.v - cell.phy.v);
-        BD[2] += weight_i * dy_i * (nei->phy.T - cell.phy.T);
-        BD[3] += weight_i * dy_i * (nei->tur.miubl - cell.tur.miubl);
+        if(nei == nullptr)continue;
+        BU[0] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.u - cell.phy.u);
+        BU[1] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.v - cell.phy.v);
+        BU[2] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.T - cell.phy.T);
+        BU[3] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->tur.miubl - cell.tur.miubl);
+        BU[4] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.rho - cell.phy.rho);
+        BD[0] += cell.LSCB.wi[i] * cell.LSCB.dyi[i] * (nei->phy.u - cell.phy.u);
+        BD[1] += cell.LSCB.wi[i] * cell.LSCB.dyi[i] * (nei->phy.v - cell.phy.v);
+        BD[2] += cell.LSCB.wi[i] * cell.LSCB.dyi[i] * (nei->phy.T - cell.phy.T);
+        BD[3] += cell.LSCB.wi[i] * cell.LSCB.dyi[i] * (nei->tur.miubl - cell.tur.miubl);
+        BD[4] += cell.LSCB.wi[i] * cell.LSCB.dyi[i] * (nei->phy.rho - cell.phy.rho);
     }
-    double Det = LU*RD-DC*DC;
-    cell.phy.ugrad.x = (RD * BU[0] - DC * BD[0])/Det;
-    cell.phy.ugrad.y = (LU * BD[0] - DC * BU[0])/Det;
-    cell.phy.vgrad.x = (RD * BU[1] - DC * BD[1])/Det;
-    cell.phy.vgrad.y = (LU * BD[1] - DC * BU[1])/Det;
-    cell.phy.Tgrad.x = (RD * BU[2] - DC * BD[2])/Det;
-    cell.phy.Tgrad.y = (LU * BD[2] - DC * BU[2])/Det;
-    cell.tur.miublgrad.x = (RD * BU[3] - DC * BD[3])/Det;
-    cell.tur.miublgrad.y = (LU * BD[3] - DC * BU[3])/Det;
+    double Det = cell.LSCB.LU*cell.LSCB.RD-cell.LSCB.DC*cell.LSCB.DC;
+    cell.phy.ugrad.x = (cell.LSCB.RD * BU[0] - cell.LSCB.DC * BD[0])/Det;
+    cell.phy.ugrad.y = (cell.LSCB.LU * BD[0] - cell.LSCB.DC * BU[0])/Det;
+    cell.phy.vgrad.x = (cell.LSCB.RD * BU[1] - cell.LSCB.DC * BD[1])/Det;
+    cell.phy.vgrad.y = (cell.LSCB.LU * BD[1] - cell.LSCB.DC * BU[1])/Det;
+    cell.phy.Tgrad.x = (cell.LSCB.RD * BU[2] - cell.LSCB.DC * BD[2])/Det;
+    cell.phy.Tgrad.y = (cell.LSCB.LU * BD[2] - cell.LSCB.DC * BU[2])/Det;
+    cell.tur.miublgrad.x = (cell.LSCB.RD * BU[3] - cell.LSCB.DC * BD[3])/Det;
+    cell.tur.miublgrad.y = (cell.LSCB.LU * BD[3] - cell.LSCB.DC * BU[3])/Det;
+    cell.phy.rhograd.x = (cell.LSCB.RD * BU[4] - cell.LSCB.DC * BD[4])/Det;
+    cell.phy.rhograd.y = (cell.LSCB.LU * BD[4] - cell.LSCB.DC * BU[4])/Det;
 }
