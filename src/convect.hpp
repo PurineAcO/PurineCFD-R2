@@ -5,8 +5,6 @@
 #include <cmath>
 #include <linux/stat.h>
 
-#define vecfor(cnt) for(int i=0;i<cnt;i++)
-
 // 无粘通量
 void convect_JST(cc::face_class& face);
 // 汇总单元各面的无粘和黏性通量
@@ -85,10 +83,6 @@ inline void convect_ROE(cc::face_class &face){
     // 形成面上对流通量
     vecfor(4) face.convect[i] = 0;
     vecfor(4) face.convect[i] += 0.5*(FL[i]+FR[i]);
-    for(int i=0;i<4;i++){
-        for(int j=0;j<4;j++){
-            face.convect[j] -= 0.5 * lambda[i] * alpha[i] * tz[i][j];
-        }
-    }
-
+    vecfor(4) for(int j=0;j<4;j++) face.convect[j] -= 0.5 * lambda[i] * alpha[i] * tz[i][j];
+        
 }

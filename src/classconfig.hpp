@@ -9,7 +9,7 @@
 namespace cc {
 
 struct cell_class;      // 网格
-struct face_class;      // 面、
+struct face_class;      // 面
 
 struct LSCBmatrix{
     double LU = 0;         // 上三角位置

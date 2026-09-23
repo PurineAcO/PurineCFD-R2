@@ -12,6 +12,8 @@
 #include <system_error>
 #include <vector>
 
+#define vecfor(cnt) for(int i=0;i<cnt;i++)
+
 namespace cc {
 
     // 程序基本参数
