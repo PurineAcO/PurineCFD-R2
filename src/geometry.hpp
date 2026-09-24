@@ -102,6 +102,10 @@ inline void sad(cc::cell_class& cell){
 inline void least_square_cell_based_preprocess(cc::cell_class &cell){
     for(int i=0;i<cell.ecnt;i++){
         cc::cell_class *nei = cell.nei[i];
+        // 虚网格不带几何, 不参与最小二乘
+        if(nei == nullptr || nei->index > cc::cell_num){
+            continue;
+        }
         cell.LSCB.dxi[i] = nei->center.x - cell.center.x;
         cell.LSCB.dyi[i] = nei->center.y - cell.center.y;
         cell.LSCB.wi[i] = 1/(cell.LSCB.dxi[i]*cell.LSCB.dxi[i] + cell.LSCB.dyi[i]*cell.LSCB.dyi[i]);
@@ -133,7 +137,6 @@ inline bool geometrymain(){
             cell.proj.x += 0.5*std::abs(cell.faces[i]->nor.x);
             cell.proj.y += 0.5*std::abs(cell.faces[i]->nor.y);
         }
-        least_square_cell_based_preprocess(cell);
     }
     return true;
 }

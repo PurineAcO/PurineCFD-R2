@@ -64,7 +64,8 @@ inline void least_square_cell_based(cc::cell_class &cell){
     double BU[5] = {};double BD[5] = {};
     for(int i=0;i<cell.ecnt;i++){
         cc::cell_class *nei = cell.nei[i];
-        if(nei == nullptr)continue;
+        // 虚网格不带几何, 不参与最小二乘
+        if(nei == nullptr || nei->index > cc::cell_num)continue;
         BU[0] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.u - cell.phy.u);
         BU[1] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.v - cell.phy.v);
         BU[2] += cell.LSCB.wi[i] * cell.LSCB.dxi[i] * (nei->phy.T - cell.phy.T);

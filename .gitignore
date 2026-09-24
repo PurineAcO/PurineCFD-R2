@@ -1,5 +1,6 @@
 /build*/
 /run/
+/runs/
 *.png
 __pycache__/
 .pytest_cache/

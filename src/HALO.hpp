@@ -9,7 +9,10 @@ void HALO_structer_mesh();
 void update_ghost_field();
 // 找到HALO网格
 cc::cell_class& ghost_at(int layer,int s);
+// 按外法向定向面的 low/high 侧
+void set_face_direction();
 
+// 虚网格不带几何: 环向索引与物理量仅此而已
 inline cc::cell_class& ghost_at(int layer,int s){
     return cc::GhostList[layer*structer::S_MAX + s - 1];
 }
@@ -83,8 +86,30 @@ inline void HALO_structer_mesh(){
     printf("HALO: 6 layers, %d ghost cells\n",6*smax);
 }
 
+// 面的 low/high 按外法向定向: nor 从 low 指向 high
+// 只用格的 fnorm 判定, 不碰任何坐标
+inline void set_face_direction(){
+    for(cc::cell_class& cell : cc::CellList){
+        for(int i=0;i<cell.ecnt;i++){
+            cc::cell_class* other = cell.nei[i];
+            if(other == nullptr){
+                continue;
+            }
+            cc::face_class* face = cell.faces[i];
+            if(cell.fnorm[i]){
+                face->low = &cell;
+                face->high = other;
+            }else{
+                face->low = other;
+                face->high = &cell;
+            }
+        }
+    }
+}
+
 inline void update_ghost_field(){
     const int smax = structer::S_MAX;
+    const int nmax = structer::N_MAX;
 
     // 壁面
     for(int layer=0;layer<3;layer++){
@@ -108,7 +133,9 @@ inline void update_ghost_field(){
     for(int layer=3;layer<6;layer++){
         for(int s=1;s<=smax;s++){
             cc::cell_class& ghost = ghost_at(layer,s);
-            cc::face_class* reface = ghost.southf;
+            // 虚网格没有面, 远场面要从最外层真实单元上取
+            const cc::cell_class& inner = cc::CellList[(nmax-1)*smax + s - 1];
+            cc::face_class* reface = inner.northf;
             ghost.phy.rho = rho_inf;
             ghost.phy.u = reface->phy.u;
             ghost.phy.v = reface->phy.v;

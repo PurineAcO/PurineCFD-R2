@@ -55,29 +55,26 @@ static bool rk_stage(double rk,int step){
     slip_wall_boundary();
     far_field_boundary();
 #pragma omp parallel for schedule(static)
-    for(cc::face_class face : cc::FaceList){
+    for(cc::face_class& face : cc::FaceList){
         face.face_physic_mid();
     }
+    // 最小二乘梯度 + Roe 通量, 无人工耗散
 #pragma omp parallel for schedule(static)
     for(int i=0;i<cc::cell_num;i++){
-        cc::cell_class& cell = cc::CellList[i];
-        green_gauss_cell_based(cell);
-        jst::shockwave_recognize(cell);
-        jst::laplace_dissipation(cell);
+        least_square_cell_based(cc::CellList[i]);
     }
 #pragma omp parallel for schedule(static)
     for(int i=0;i<cc::face_num;i++){
         cc::face_class& face = cc::FaceList[i];
         face.form_physic();
         face_gradient(face);
-        convect_JST(face);
+        convect_ROE(face);
         SA::diffusion_SA(face);
     }
 #pragma omp parallel for schedule(static)
     for(int i=0;i<cc::cell_num;i++){
         cc::cell_class& cell = cc::CellList[i];
         assemble_flux(cell);
-        jst::JST_dissipation(cell);
         SA::SA_equation_RK(cell,rk);
     }
 #pragma omp parallel for schedule(static)
@@ -169,7 +166,13 @@ int main(int argc,char** argv){
     allcell sad(cell);
     std_initialize();
     allcell cell.form_conservative();
+    // 建立虚网格, 并把边界面按外法向定向
     HALO_structer_mesh();
+    set_face_direction();
+    // 最小二乘预处理依赖四个方向的邻居都已接好, 所以放在 HALO 之后
+    for(int i=0;i<cc::cell_num;i++){
+        least_square_cell_based_preprocess(cc::CellList[i]);
+    }
     if(!solve()){
         return 1;
     }
