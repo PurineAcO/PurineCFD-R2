@@ -10,8 +10,11 @@
 #include <unistd.h>
 #include <utility>
 
+#include "config.hpp"
+
 namespace parallel {
-// 优先采用 OMP_NUM_THREADS；未设置时使用进程可用的物理核心数。
+// 优先采用 OMP_NUM_THREADS（方便临时覆盖）；其次 config.json 里的 solver.threads；
+// 都未给出时使用进程可用的物理核心数。
 const char* configure_threads();
 } // namespace parallel
 
@@ -52,6 +55,10 @@ inline const char* parallel::configure_threads(){
     omp_set_dynamic(0);
     if(const char* requested = getenv("OMP_NUM_THREADS"); requested && *requested){
         return "OMP_NUM_THREADS";
+    }
+    if(cc::threads > 0){
+        omp_set_num_threads(std::min(cc::threads,omp_get_thread_limit()));
+        return "config.json";
     }
     int cores = physical_cores();
     if(cores <= 0){

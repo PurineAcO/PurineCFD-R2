@@ -1,23 +1,25 @@
 #pragma once
 
 #include "classconfig.hpp"
+#include "config.hpp"
 #include "physic.hpp"
 #include "udf.hpp"
 #include <cmath>
 
 // 无滑移不穿透壁面
-void slip_wall_boundary();
+void noslip_wall_boundary();
 
 // 亚声速特征远场
 void far_field_boundary();
 
-inline void slip_wall_boundary(){
+inline void noslip_wall_boundary(){
     for(cc::face_class* wall : cc::WallFaces){
         cc::cell_class* c = cc::boundary_findcell(wall);
         wall->phy.u = 0.0;
         wall->phy.v = 0.0;
         wall->phy.T = c->phy.T;
-        wall->phy.rho = c->phy.rho;
+        wall->phy.p = c->phy.p;
+        wall->phy.rho = c->phy.p /(cc::R * c->phy.T);
         wall->tur.miubl = 0.0;
     }
 }
@@ -28,10 +30,8 @@ inline void far_field_boundary(){
     double miubl_inf = 3.0*sutherland::dynamic_viscosity(FAR_DEFINE.T)/rho_inf;
     for(cc::face_class* far : cc::FarFaces){
         cc::cell_class* c = cc::boundary_findcell(far);
-        double nx = far->nor.x,ny = far->nor.y;
-        double len = std::sqrt(nx*nx + ny*ny);
-        nx /= len;
-        ny /= len;
+        cc::vec2 nor = far->length1_nor();
+        double nx = nor.x;double ny = nor.y;
         if(nx*(far->mid.x - c->center.x) + ny*(far->mid.y - c->center.y) < 0){
             nx = -nx;
             ny = -ny;

@@ -9,10 +9,11 @@
 #include "geometry.hpp"
 #include "initialize.hpp"
 #include "boundary.hpp"
-#include "interpolate.hpp"
+// #include "interpolate.hpp"
 #include "grad.hpp"
+#include "MUSCL.hpp"
 #include "convect.hpp"
-#include "dissipation.hpp"
+// #include "dissipation.hpp"
 #include "SA.hpp"
 #include "timarch.hpp"
 #include "residual.hpp"
@@ -52,12 +53,14 @@ static bool rk_stage(double rk,int step){
         return false;
     }
     update_ghost_field();
-    slip_wall_boundary();
+    noslip_wall_boundary();
     far_field_boundary();
 #pragma omp parallel for schedule(static)
     for(cc::face_class& face : cc::FaceList){
         face.face_physic_mid();
     }
+    // MUSCL二阶重构, 面左右状态存入 lowp/highp
+    muscl_reconstruct();
     // 最小二乘梯度 + Roe 通量, 无人工耗散
 #pragma omp parallel for schedule(static)
     for(int i=0;i<cc::cell_num;i++){
@@ -148,10 +151,10 @@ int main(int argc,char** argv){
         fprintf(stderr,"Error: Usage: purinecfd [config.json]\n");
         return 1;
     }
-    const char* thread_policy = parallel::configure_threads();
     if(!config::load(argc == 2 ? argv[1] : "config.json")){
         return 1;
     }
+    const char* thread_policy = parallel::configure_threads();
     if(!open_log(cc::testpath.c_str())){
         return 1;
     }
@@ -168,7 +171,6 @@ int main(int argc,char** argv){
     allcell cell.form_conservative();
     // 建立虚网格, 并把边界面按外法向定向
     HALO_structer_mesh();
-    set_face_direction();
     // 最小二乘预处理依赖四个方向的邻居都已接好, 所以放在 HALO 之后
     for(int i=0;i<cc::cell_num;i++){
         least_square_cell_based_preprocess(cc::CellList[i]);

@@ -1,121 +1,86 @@
 #pragma once
 
 #include "classconfig.hpp"
+#include "config.hpp"
 #include <cstdio>
+#include <cstdlib>
 
+/*
+HALO 虚网格一般只能适用于结构化网格求解,为了满足精度此处默认取3个.
+HALO 网格独立存储在cc::GhostList中,从横行0~3是壁面虚拟网格,3~5是远场虚拟网格.
+在已经确定是结构化网格的基础上,建议弃用cc::gotocell,而是使用更加广义的gotoHALO
+*/
+
+// 检查网格是否满足结构化条件
+bool check_if_structed();
 // 建立HALO虚网格
 void HALO_structer_mesh();
 // 更新虚网格物理量
 void update_ghost_field();
-// 找到HALO网格
-cc::cell_class& ghost_at(int layer,int s);
-// 按外法向定向面的 low/high 侧
-void set_face_direction();
+// 找到HALO框架下任何网格
+cc::cell_class* gotoHALO(int n,int s);
 
-// 虚网格不带几何: 环向索引与物理量仅此而已
-inline cc::cell_class& ghost_at(int layer,int s){
-    return cc::GhostList[layer*structer::S_MAX + s - 1];
+
+inline bool check_if_structed(){
+    for(cc::cell_class& cell:cc::CellList) if(cell.index != (cell.n - 1)*structer::S_MAX + cell.s) return false;
+    return true;
+}
+
+inline cc::cell_class* gotoHALO(int n,int s){
+    if(s>structer::S_MAX || n<-3 || n>structer::N_MAX+3 )return nullptr;
+    else if(n<=0) return &cc::GhostList[std::abs(n)*structer::S_MAX+s-1];
+    else if(n>structer::N_MAX) return &cc::GhostList[(n-structer::N_MAX+2)*structer::S_MAX+s-1];
+    else return &cc::gotocell((n-1)*structer::S_MAX+s);
+
 }
 
 inline void HALO_structer_mesh(){
     if(!structer::ifstructer){return;}
-    const int smax = structer::S_MAX;
-    const int nmax = structer::N_MAX;
-    const int base = cc::cell_num;
-    const int layer_n[6] = {0,-1,-2,nmax+1,nmax+2,nmax+3};
 
     // 给虚网格分配内存
     cc::GhostList.reserve(6*structer::S_MAX);
     for(int layer=0;layer<6;layer++){
-        for(int s=1;s<=smax;s++){
+        for(int s=1;s<=structer::S_MAX;s++){
             cc::cell_class ghost;
-            ghost.index = base + layer*smax + s;
-            ghost.ecnt = 0;
-            ghost.s = s;
-            ghost.n = layer_n[layer];
-            ghost.east = 0;
-            ghost.west = 1;
-            ghost.north = 2;
-            ghost.south = 3;
+            ghost.index = cc::cell_num + layer*structer::S_MAX + s;ghost.s = s;
+            if(layer<3) ghost.n = -layer;
+            else ghost.n = structer::N_MAX+layer-2;
+            ghost.ecnt = 0;ghost.east = 0;ghost.west = 1;ghost.north = 2;ghost.south = 3;
             cc::GhostList.push_back(ghost);
         }
     }
 
     // 链接虚网格
-    for(int layer=0;layer<6;layer++){
-        for(int s=1;s<=smax;s++){
-            cc::cell_class& ghost = ghost_at(layer,s);
-            ghost.nei[ghost.east] = &ghost_at(layer,s == smax ? 1 : s+1);
-            ghost.nei[ghost.west] = &ghost_at(layer,s == 1 ? smax : s-1);
-            if(layer == 0){
-                ghost.nei[ghost.north] = &cc::CellList[s-1];              // 真实 n = 1
-            }else if(layer < 3){
-                ghost.nei[ghost.north] = &ghost_at(layer-1,s);
-            }else if(layer < 5){
-                ghost.nei[ghost.north] = &ghost_at(layer+1,s);
-            }
-            if(layer > 0 && layer < 3){
-                ghost.nei[ghost.south] = &ghost_at(layer+1,s);
-            }else if(layer == 3){
-                ghost.nei[ghost.south] = &cc::CellList[(nmax-1)*smax + s - 1]; // 真实 n = nmax
-            }else if(layer > 3){
-                ghost.nei[ghost.south] = &ghost_at(layer-1,s);
-            }
-        }
-    }
+    for(int n=-2;n<=structer::N_MAX+3;n++){
+        if(n >= 1 && n <= structer::N_MAX) continue;
+        for(int s=1;s<=structer::S_MAX;s++){
+            cc::cell_class* ghost = gotoHALO(n,s);
+            ghost->nei[ghost->east]  = gotoHALO(n,s == structer::S_MAX ? 1 : s+1);
+            ghost->nei[ghost->west]  = gotoHALO(n,s == 1 ? structer::S_MAX : s-1);
+            ghost->nei[ghost->north] = gotoHALO(n+1,s);
+            ghost->nei[ghost->south] = gotoHALO(n-1,s);
+        }}
 
-    // 边界单元与边界面都接上虚网格
-    for(cc::cell_class& cell : cc::CellList){
-        for(int i=0;i<cell.ecnt;i++){
-            cc::face_class* face = cell.faces[i];
-            if(face->type == cc::INTER){
-                continue;
-            }
-            cc::cell_class* ghost = (face->type == cc::WALL) ? &ghost_at(0,cell.s)
-                                                             : &ghost_at(3,cell.s);
-            cell.nei[i] = ghost;
-            if(face->nei[0] == nullptr){
-                face->nei[0] = ghost;
-            }else{
-                face->nei[1] = ghost;
-            }
-        }
-    }
+    for(cc::face_class *face: cc::WallFaces){
+        bool i = face->nei[0] ? 1:0;
+        face->nei[i] = gotoHALO(0,face->nei[!i]->s);
+        face->nei[!i]->nei[face->nei[!i]->south] = gotoHALO(0,face->nei[!i]->s);}
+    for(cc::face_class *face: cc::FarFaces){
+        bool i = face->nei[0] ? 1:0;
+        face->nei[i] = gotoHALO(structer::N_MAX+1,face->nei[!i]->s);
+        face->nei[!i]->nei[face->nei[!i]->north] = gotoHALO(structer::N_MAX+1,face->nei[!i]->s);}
 
     update_ghost_field();
-    printf("HALO: 6 layers, %d ghost cells\n",6*smax);
-}
-
-// 面的 low/high 按外法向定向: nor 从 low 指向 high
-// 只用格的 fnorm 判定, 不碰任何坐标
-inline void set_face_direction(){
-    for(cc::cell_class& cell : cc::CellList){
-        for(int i=0;i<cell.ecnt;i++){
-            cc::cell_class* other = cell.nei[i];
-            if(other == nullptr){
-                continue;
-            }
-            cc::face_class* face = cell.faces[i];
-            if(cell.fnorm[i]){
-                face->low = &cell;
-                face->high = other;
-            }else{
-                face->low = other;
-                face->high = &cell;
-            }
-        }
-    }
+    printf("HALO: 6 layers, %d ghost cells\n",6*structer::S_MAX);
 }
 
 inline void update_ghost_field(){
-    const int smax = structer::S_MAX;
-    const int nmax = structer::N_MAX;
 
     // 壁面
-    for(int layer=0;layer<3;layer++){
-        for(int s=1;s<=smax;s++){
-            cc::cell_class& ghost = ghost_at(layer,s);
-            const cc::cell_class& inner = cc::CellList[layer*smax + s - 1];
+    for(int n=0;n>=-2;n--){
+        for(int s=1;s<=structer::S_MAX;s++){
+            cc::cell_class& ghost = *gotoHALO(n,s);
+            const cc::cell_class& inner = *gotoHALO(1-n,s);
             ghost.phy.rho = inner.phy.rho;
             ghost.phy.p = inner.phy.p;
             ghost.phy.T = inner.phy.T;
@@ -129,12 +94,10 @@ inline void update_ghost_field(){
 
     // 压力远场
     const double rho_inf = FAR_DEFINE.p/(cc::R*FAR_DEFINE.T);
-    const double miubl_inf = 3.0*sutherland::dynamic_viscosity(FAR_DEFINE.T)/rho_inf;
-    for(int layer=3;layer<6;layer++){
-        for(int s=1;s<=smax;s++){
-            cc::cell_class& ghost = ghost_at(layer,s);
-            // 虚网格没有面, 远场面要从最外层真实单元上取
-            const cc::cell_class& inner = cc::CellList[(nmax-1)*smax + s - 1];
+    for(int n=structer::N_MAX+1;n<=structer::N_MAX+3;n++){
+        for(int s=1;s<=structer::S_MAX;s++){
+            cc::cell_class& ghost = *gotoHALO(n,s);
+            const cc::cell_class& inner = *gotoHALO(structer::N_MAX,s);
             cc::face_class* reface = inner.northf;
             ghost.phy.rho = rho_inf;
             ghost.phy.u = reface->phy.u;
@@ -143,12 +106,11 @@ inline void update_ghost_field(){
             ghost.phy.p = reface->phy.p;
             ghost.phy.a = reface->phy.a;
             ghost.phy.e = reface->phy.e;
-            ghost.tur.miubl = miubl_inf;
+            ghost.tur.miubl = reface->tur.miubl;
         }
     }
 
     // 耗散项会读邻居的守恒量
-    for(cc::cell_class& ghost : cc::GhostList){
-        ghost.form_conservative();
-    }
+    for(cc::cell_class& ghost : cc::GhostList) ghost.form_conservative();
+    
 }

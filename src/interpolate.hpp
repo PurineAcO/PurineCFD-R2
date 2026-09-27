@@ -3,16 +3,19 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 
+/*
+MUSCL只能建立邻接面的左物理量和右物理量,无论是结构网格还是非结构网格都显式依赖了梯度
+*/
+
 // 面上中心差分插值
 void interpolate_mid(cc::face_class* face);
-// 面上高阶中心差分,只建立左右值
-void mid_2nd_lr(cc::face_class* face);
+// MUSCL建立面上左右值
+void muscl(cc::face_class* face);
 
 
 inline void interpolate_mid(cc::face_class *face){face->face_physic_mid();}
 
-inline void mid_2nd_lr(cc::face_class *face){
-    // 使用之前,必须已经建立起来梯度,不建立面上的物理量
+inline void muscl(cc::face_class *face){
     if(face->type != cc::INTER){return;}
     face->lowp.rho = face->low->phy.rho + cc::dot(face->low->phy.rhograd, (face->mid - face->low->center));
     face->highp.rho = face->high->phy.rho + cc::dot(face->high->phy.rhograd,face->mid - face->high->center);

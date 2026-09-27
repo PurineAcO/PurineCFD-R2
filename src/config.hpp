@@ -23,6 +23,7 @@ namespace cc {
     inline std::string testpath;    // 日志输出路径
     inline std::string fieldpath;   // 流场输出路径
     inline long long max_step = 0;  // 时间步数
+    inline int threads = 0;         // OpenMP线程数, 0表示自动选择
 
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};
 
@@ -235,7 +236,7 @@ inline bool config::load(const char* path){
     const Json& far = root.at("farfield");
     // 各节的键白名单; io 的 structured 只在网格带结构化信息时出现
     if(!keys(io,{"mesh","log","field"},{"structured"}) ||
-       !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"}) ||
+       !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"},{"threads"}) ||
        !keys(far,{"Ma","T","p","alpha"})){
         return false;
     }
@@ -274,6 +275,11 @@ inline bool config::load(const char* path){
     if(conv_interval < 2){
         return fail("convergence_interval must be at least 2");
     }
+    // threads 缺省表示按可用物理核心自动选择
+    int threads = 0;
+    if(solver.contains("threads") && !count(solver,"threads",threads)){
+        return false;
+    }
     // 来流条件
     double cfl = 0.0,ma = 0.0,T = 0.0,p = 0.0,alpha = 0.0;
     if(!positive(solver,"cfl",cfl) || !positive(far,"Ma",ma) ||
@@ -297,6 +303,7 @@ inline bool config::load(const char* path){
     cc::testpath = log_path;
     cc::fieldpath = field_path;
     cc::max_step = max_steps;
+    cc::threads = threads;
     fatime::CFL = cfl;
     dump_step = dump_interval;
     conv_step = conv_interval;

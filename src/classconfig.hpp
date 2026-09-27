@@ -37,6 +37,7 @@ struct face_class{
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
     physics phy;                   // 物理量
+    double un;                     // 面法向速度
     turbulence tur;                // 湍流
     physics lowp;                  // 左插值物理量
     physics highp;                 // 右插值物理量
@@ -55,10 +56,16 @@ struct face_class{
     face_class() = default;
     face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);// 面构造
 
+    // 法向量单位化
+    vec2 length1_nor();
     // 面上中心差分插值
     void face_physic_mid();
-    // 面值由ρ,u,v,T形成e,p,a
+    // 根据基本物理量形成能量、声速、压强、法向速度
     void form_physic();
+    // 通用级jacobi变换,已经带了面长度
+    double toface_jacobi(double F,double G) const;
+    template<int N> void toface_jacobi(const double (&F)[N],const double (&G)[N],double (&out)[N]) const;
+    template<int N1,int N2> void toface_jacobi(const double (&F)[N1][N2],const double (&G)[N1][N2],double (&out)[N1][N2]) const;
 };
 
 struct cell_class{
@@ -164,6 +171,7 @@ inline void face_class::form_physic(){
     phy.e = get_energy(phy);
     phy.p = cc::R*phy.rho*phy.T;
     phy.a = get_sonic_velocity(phy.T);
+    un = toface_jacobi(phy.u,phy.v)/std::sqrt(nor.x*nor.x+nor.y*nor.y);
 }
 
 inline void cell_class::form_physic(){
@@ -232,5 +240,24 @@ inline void field_mark(const cell_class& cell){
                                                 std::memory_order_relaxed)){
     }
 }
+
+inline double face_class::toface_jacobi(double F,double G)const{
+    return nor.x * F + nor.y * G;
+}
+
+template<int N> void face_class::toface_jacobi(const double (&F)[N],const double (&G)[N],double (&out)[N]) const{
+    for(int i=0;i<N;i++) out[i] = nor.x * F[i] + nor.y * G[i];
+}
+
+
+template<int N1,int N2> 
+void face_class::toface_jacobi(const double (&F)[N1][N2],const double (&G)[N1][N2],double (&out)[N1][N2]) const{
+    for(int i=0;i<N1;i++) for(int j=0;j<N2;j++) out[i][j] = nor.x*F[i][j] + nor.y * G[i][j];
+}
+
+inline vec2 face_class::length1_nor(){
+    return vec2{nor.x/len,nor.y/len};
+}
+
 
 }
