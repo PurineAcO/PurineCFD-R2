@@ -34,6 +34,8 @@ namespace cc {
         vec2& operator+=(const vec2& o){ x += o.x; y += o.y; return *this; }
         vec2& operator-=(const vec2& o){ x -= o.x; y -= o.y; return *this; }
         vec2& operator*=(double s){ x *= s; y *= s; return *this; }
+        void clear();
+        double norm();
     };
 
     inline vec2 operator+(vec2 a, const vec2& b){ return a += b; }
@@ -41,13 +43,70 @@ namespace cc {
     inline vec2 operator*(vec2 a, double s){ return a *= s; }
     inline vec2 operator*(double s, vec2 a){ return a *= s; }
     inline double dot(const vec2& a, const vec2& b){ return a.x*b.x + a.y*b.y; }
+    inline void vec2::clear(){x=0.0;y=0.0;}
+    inline double vec2::norm(){return std::sqrt(x*x+y*y);}
 
-    // 物理量矩阵
-    struct physics{
-        double rho = 0.0, u = 0.0, v = 0.0;
-        double T = 0.0, a = 0.0;
-        double p = 0.0, e = 0.0;
-        vec2 ugrad, vgrad, Tgrad ,rhograd;  // 梯度
+    struct vec4{
+        double c;       // continuous
+        double x;       // velocity-x
+        double y;       // velocity-y
+        double e;       // energy
+        vec4() = default;
+        vec4(double c_,double x_,double y_,double e_):c(c_),x(x_),y(y_),e(e_){}
+        vec4& operator+=(const vec4& o){ c+=o.c;x+=o.x;y+=o.y;e+=o.e; return *this;}
+        vec4& operator-=(const vec4& o){ c-=o.c;x-=o.x;y-=o.y;e-=o.e; return *this;}
+        vec4& operator*=(double k){ c*=k;x*=k;y*=k;e*=k;return *this;}
+        void clear();
+    };
+
+    inline vec4 operator+(vec4 a, const vec4& b){ return a += b; }
+    inline vec4 operator-(vec4 a, const vec4& b){ return a -= b; }
+    inline vec4 operator*(vec4 a, double s){ return a *= s; }
+    inline vec4 operator*(double s, vec4 a){ return a *= s; }
+    inline void vec4::clear(){c=0.0;x=0.0;y=0.0;e=0.0;}
+
+    struct vecp{
+        double rho,u,v,T;
+        vecp() = default;
+        vecp(double rho_,double u_,double v_,double T_):rho(rho_),u(u_),v(v_),T(T_){}
+        vecp& operator+=(const vecp& o){ rho+=o.rho;u+=o.u;v+=o.v;T+=o.T; return *this;}
+        vecp& operator-=(const vecp& o){ rho-=o.rho;u-=o.u;v-=o.v;T-=o.T; return *this;}
+        vecp& operator*=(double k){ rho*=k;u*=k;v*=k;T*=k;return *this;}
+        void clear();
+    };
+
+    inline vecp operator+(vecp a, const vecp& b){ return a += b; }
+    inline vecp operator-(vecp a, const vecp& b){ return a -= b; }
+    inline vecp operator*(vecp a, double s){ return a *= s; }
+    inline vecp operator*(double s, vecp a){ return a *= s; }
+    inline void vecp::clear(){rho=0.0;u=0.0;v=0.0;T=0.0;}
+
+    struct vecgrad{
+        vec2 rhograd,ugrad, vgrad, Tgrad;
+        vecgrad() = default;
+        vecgrad(vec2 rho_,vec2 u_,vec2 v_,vec2 t_):rhograd(rho_),ugrad(u_),vgrad(v_),Tgrad(t_){}
+        void clear();
+    };
+    inline vecp operator*(const vecgrad& a,const vec2& r){
+        return vecp(dot(a.rhograd,r),dot(a.ugrad,r),dot(a.vgrad,r),dot(a.Tgrad,r));
+    }
+    inline vecgrad operator*(const vecp& phyf,const vec2& fnor){
+        return vecgrad(phyf.rho*fnor,phyf.u*fnor,phyf.v*fnor,phyf.T*fnor);
+    }
+    inline void vecgrad::clear(){rhograd.clear();ugrad.clear();vgrad.clear();Tgrad.clear();}
+    inline vecgrad operator*(const double a,const vecgrad& grad){
+        return vecgrad(a*grad.rhograd,a*grad.ugrad,a*grad.vgrad,a*grad.Tgrad);
+    }
+    inline vecgrad operator+(const vecgrad& a,const vecgrad& b){
+        return vecgrad(a.rhograd+b.rhograd,a.ugrad+b.ugrad,a.vgrad+b.vgrad,a.Tgrad+b.Tgrad);
+    }
+
+    struct otphy{
+        double a,p,e,un;
+        // 从原始物理量生成引申物理量
+        otphy()=default;
+        otphy(double a_,double p_,double e_):a(a_),p(p_),e(e_){}
+        void form_otphy(cc::vecp phy);
     };
 
     // 湍流变量矩阵

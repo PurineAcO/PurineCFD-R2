@@ -18,8 +18,8 @@ inline void noslip_wall_boundary(){
         wall->phy.u = 0.0;
         wall->phy.v = 0.0;
         wall->phy.T = c->phy.T;
-        wall->phy.p = c->phy.p;
-        wall->phy.rho = c->phy.p /(cc::R * c->phy.T);
+        wall->otphy.p = c->otphy.p;
+        wall->phy.rho = c->otphy.p /(cc::R * c->phy.T);
         wall->tur.miubl = 0.0;
     }
 }
@@ -47,7 +47,7 @@ inline void far_field_boundary(){
         double a_star = 0.25*(cc::gamma - 1.0)*(Rp - Rm);
         double s,vt_star;
         if(vn_star >= 0.0){
-            s = c->phy.p/std::pow(c->phy.rho,cc::gamma);
+            s = c->otphy.p/std::pow(c->phy.rho,cc::gamma);
             vt_star = vt;
         }else{
             s = FAR_DEFINE.p/std::pow(rho_inf,cc::gamma);
@@ -56,8 +56,8 @@ inline void far_field_boundary(){
         far->phy.u = vn_star*nx - vt_star*ny;
         far->phy.v = vn_star*ny + vt_star*nx;
         far->phy.rho = std::pow(a_star*a_star/(cc::gamma*s),1.0/(cc::gamma - 1.0));
-        far->phy.p = s*std::pow(far->phy.rho,cc::gamma);
-        far->phy.T = far->phy.p/(cc::R*far->phy.rho);
+        far->otphy.p = s*std::pow(far->phy.rho,cc::gamma);
+        far->phy.T = far->otphy.p/(cc::R*far->phy.rho);
         far->tur.miubl = miubl_inf;
     }
 }

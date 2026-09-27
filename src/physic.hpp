@@ -6,7 +6,7 @@
 // 形成声速
 double get_sonic_velocity(double T);
 // 形成能量
-double get_energy(cc::physics phy);
+double get_energy(cc::vecp phy);
 
 namespace sutherland {
 
@@ -21,12 +21,18 @@ inline double get_sonic_velocity(double T){
     return sqrt(cc::gamma*cc::R*T);
 }
 
-inline double get_energy(cc::physics phy){
+inline double get_energy(cc::vecp phy){
     return cc::Cv*phy.T + 0.5*(phy.u*phy.u + phy.v*phy.v);
 }
 
 namespace sutherland {
-    double dynamic_viscosity(double T){
+    inline double dynamic_viscosity(double T){
         return mu0*(T/T0)*std::sqrt(T/T0)*(T0 + Ts)/(T + Ts);
     }
+}
+
+inline void cc::otphy::form_otphy(cc::vecp phy){
+    e = get_energy(phy);
+    a = get_sonic_velocity(phy.T);
+    p = phy.rho*cc::R*phy.T;
 }

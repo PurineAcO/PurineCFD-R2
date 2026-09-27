@@ -3,7 +3,6 @@
 #include <atomic>
 #include <vector>
 #include "config.hpp"
-#include "physic.hpp"
 #include <cmath>
 
 namespace cc {
@@ -28,19 +27,22 @@ struct node_class{
 };
 
 struct face_class{
-    int index = 0;      // 面编号
-    short type = INTER; // 面类型
+    int index = 0;                  // 面编号
+    short type = INTER;             // 面类型
     node_class* node[2] = {};      // 面邻接点指针
     vec2 mid = {0.0,0.0};   // 面中点坐标
     vec2 nor = {0.0,0.0};   // 面法向*面长
-    double len = 0.0;       // 面长度
+    bool outer;                    // 面法向方向指示
+    double len = 0.0;               // 面长度
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
-    physics phy;                   // 物理量
+    vecp phy;                       // 物理量
+    vecp phgrad;                    // 面法向梯度
+    struct otphy otphy;             // 引申物理量
     double un;                     // 面法向速度
     turbulence tur;                // 湍流
-    physics lowp;                  // 左插值物理量
-    physics highp;                 // 右插值物理量
+    vecp phynei[2];                // 左右插值物理量
+    struct otphy otnei[2];         // 左右引申物理量
 
     // 结构化网格参数
     bool iswedir = false;           // 东西面指示
@@ -50,20 +52,23 @@ struct face_class{
     double lam = 0.0;        // 谱半径 |u·n|*Δs + a*Δs
     double coef = 0.0;       // ν̃的扩散系数
     double turflux = 0.0;    // (∇ν̃·n)*Δs
-    double convect[4] = {};  // 无粘通量
-    double visflux[4] = {};  // 黏性通量
+    vec4 convect;               // 无粘通量
+    vec4 visflux;               // 黏性通量
 
     face_class() = default;
     face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);// 面构造
 
     // 法向量单位化
     vec2 length1_nor();
+    // 指示面法向方向
+    void normal_out();
     // 面上中心差分插值
     void face_physic_mid();
-    // 根据基本物理量形成能量、声速、压强、法向速度
-    void form_physic();
+    // 根据基本物理量形成引申物理量
+    void form_otherphy();
     // 通用级jacobi变换,已经带了面长度
     double toface_jacobi(double F,double G) const;
+    cc::vec4 toface_jacobi(const cc::vec4 &F,const cc::vec4 &G) const;
     template<int N> void toface_jacobi(const double (&F)[N],const double (&G)[N],double (&out)[N]) const;
     template<int N1,int N2> void toface_jacobi(const double (&F)[N1][N2],const double (&G)[N1][N2],double (&out)[N1][N2]) const;
 };
@@ -81,11 +86,13 @@ struct cell_class{
     vec2 center;        // 中心坐标
     vec2 proj;          // 各方向投影面积和,用于当地时间步长
 
-    physics phy;        // 物理量
-    double conser[4] = {};       // 守恒量
-    double conserformer[4] = {}; // 前期守恒量
-    double convect[4] = {};      // 无粘对流项
-    double visflux[4] = {};      // 黏性通量
+    vecp phy;                    // 物理量
+    otphy otphy;                 // 引申物理量
+    vec4 conser;                 // 守恒量
+    vec4 conserformer;           // 前期守恒量
+    vec4 convect;                // 无粘对流项
+    vec4 visflux;                // 黏性通量
+    vecgrad phgrad;              // 物理量梯度
     dissipation diss;            // 耗散项
     double localdt = 0.0;        // 当地时间步长
     turbulence tur;              // 湍流
@@ -103,13 +110,13 @@ struct cell_class{
     cell_class(int index_,int f1_,int f2_,int f3_,int f4_);// 网格构造器
 
     // 由ρ,u,v,T形成e,p,a
-    void form_physic();
+    void form_otherphy();
     // 形成守恒量
     void form_conservative();
     // 找到邻接面外法向
     void face_normal_out();
     // 由守恒量恢复ρ,u,v,T
-    void reform();
+    void prim();
     // 保存本步RK的基准状态
     void copyconver();
 };
@@ -167,45 +174,39 @@ inline void face_class::face_physic_mid(){
     tur.miubl = 0.5*(nei[0]->tur.miubl + nei[1]->tur.miubl);
 }
 
-inline void face_class::form_physic(){
-    phy.e = get_energy(phy);
-    phy.p = cc::R*phy.rho*phy.T;
-    phy.a = get_sonic_velocity(phy.T);
+inline void face_class::form_otherphy(){
+    otphy.form_otphy(phy);
     un = toface_jacobi(phy.u,phy.v)/std::sqrt(nor.x*nor.x+nor.y*nor.y);
 }
 
-inline void cell_class::form_physic(){
-    phy.e = get_energy(phy);
-    phy.p = cc::R*phy.rho*phy.T;
-    phy.a = get_sonic_velocity(phy.T);
+inline void cell_class::form_otherphy(){
+    otphy.form_otphy(phy);
 }
 
 inline void cell_class::form_conservative(){
-    conser[0] = phy.rho;
-    conser[1] = phy.rho*phy.u;
-    conser[2] = phy.rho*phy.v;
-    conser[3] = phy.rho*phy.e;
+    conser = vec4(phy.rho,phy.rho*phy.u,phy.rho*phy.v,phy.rho*otphy.e);
 }
 
 inline void cell_class::face_normal_out(){
     for(int i=0;i<ecnt;i++){
-        fnorm[i] = dot(faces[i]->nor,
-                       vec2{faces[i]->mid.x - center.x,faces[i]->mid.y - center.y}) > 0;
+        fnorm[i] = dot(faces[i]->nor,faces[i]->mid-center) > 0;
     }
 }
 
-inline void cell_class::reform(){
-    phy.rho = conser[0];
-    phy.u = conser[1]/conser[0];
-    phy.v = conser[2]/conser[0];
-    phy.e = conser[3]/conser[0];
-    phy.T = (phy.e - 0.5*(phy.u*phy.u + phy.v*phy.v))/cc::Cv;
+inline void face_class::normal_out(){
+    outer = dot(nor,nei[1]->center-nei[0]->center) > 0;
+}
+
+inline void cell_class::prim(){
+    phy.rho = conser.c;
+    phy.u = conser.x/conser.c;
+    phy.v = conser.y/conser.c;
+    double e = conser.e/conser.c;
+    phy.T = (e - 0.5*(phy.u*phy.u + phy.v*phy.v))/cc::Cv;
 }
 
 inline void cell_class::copyconver(){
-    for(int i=0;i<4;i++){
-        conserformer[i] = conser[i];
-    }
+    conserformer = conser;
     tur.miubl_former = tur.miubl;
 }
 
@@ -220,18 +221,18 @@ inline cell_class* link_cell(int number){ return number <= 0 ? nullptr : &CellLi
 inline cell_class* boundary_findcell(face_class* face){return face->nei[0] ? face->nei[0] : face->nei[1];}
 
 inline bool field_ok(const cell_class& cell){
-    const physics& phy = cell.phy;
+    const vecp& phy = cell.phy;
     return std::isfinite(phy.rho) && phy.rho > 0.0 &&
            std::isfinite(phy.u) && std::isfinite(phy.v) &&
            std::isfinite(phy.T) && phy.T > 0.0 &&
-           std::isfinite(phy.a) && std::isfinite(phy.p) && std::isfinite(phy.e) &&
+           std::isfinite(cell.otphy.a) && std::isfinite(cell.otphy.p) && std::isfinite(cell.otphy.e) &&
            std::isfinite(cell.tur.miubl) && cell.tur.miubl >= 0.0;
 }
 
 inline void field_mark(const cell_class& cell){
-    if(std::isfinite(cell.conser[0]) && cell.conser[0] > 0.0 &&
-       std::isfinite(cell.conser[1]) && std::isfinite(cell.conser[2]) &&
-       std::isfinite(cell.conser[3]) && std::isfinite(cell.tur.miubl)){
+    if(std::isfinite(cell.conser.c) && cell.conser.c > 0.0 &&
+       std::isfinite(cell.conser.x) && std::isfinite(cell.conser.y) &&
+       std::isfinite(cell.conser.e) && std::isfinite(cell.tur.miubl)){
         return;
     }
     int current = field_bad_cell.load(std::memory_order_relaxed);
@@ -245,10 +246,13 @@ inline double face_class::toface_jacobi(double F,double G)const{
     return nor.x * F + nor.y * G;
 }
 
+inline cc::vec4 face_class::toface_jacobi(const cc::vec4 &F,const cc::vec4 &G) const{
+    return nor.x * F + nor.y * G;
+}
+
 template<int N> void face_class::toface_jacobi(const double (&F)[N],const double (&G)[N],double (&out)[N]) const{
     for(int i=0;i<N;i++) out[i] = nor.x * F[i] + nor.y * G[i];
 }
-
 
 template<int N1,int N2> 
 void face_class::toface_jacobi(const double (&F)[N1][N2],const double (&G)[N1][N2],double (&out)[N1][N2]) const{

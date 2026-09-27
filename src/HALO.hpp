@@ -81,31 +81,19 @@ inline void update_ghost_field(){
         for(int s=1;s<=structer::S_MAX;s++){
             cc::cell_class& ghost = *gotoHALO(n,s);
             const cc::cell_class& inner = *gotoHALO(1-n,s);
-            ghost.phy.rho = inner.phy.rho;
-            ghost.phy.p = inner.phy.p;
-            ghost.phy.T = inner.phy.T;
-            ghost.phy.u = -inner.phy.u;
-            ghost.phy.v = -inner.phy.v;
-            ghost.phy.a = get_sonic_velocity(ghost.phy.T);
-            ghost.phy.e = get_energy(ghost.phy);
+            ghost.phy = inner.phy;ghost.otphy = inner.otphy;
+            ghost.phy.u = -inner.phy.u;ghost.phy.v = -inner.phy.v;
             ghost.tur.miubl = -inner.tur.miubl;
         }
     }
 
     // 压力远场
-    const double rho_inf = FAR_DEFINE.p/(cc::R*FAR_DEFINE.T);
     for(int n=structer::N_MAX+1;n<=structer::N_MAX+3;n++){
         for(int s=1;s<=structer::S_MAX;s++){
             cc::cell_class& ghost = *gotoHALO(n,s);
             const cc::cell_class& inner = *gotoHALO(structer::N_MAX,s);
             cc::face_class* reface = inner.northf;
-            ghost.phy.rho = rho_inf;
-            ghost.phy.u = reface->phy.u;
-            ghost.phy.v = reface->phy.v;
-            ghost.phy.T = reface->phy.T;
-            ghost.phy.p = reface->phy.p;
-            ghost.phy.a = reface->phy.a;
-            ghost.phy.e = reface->phy.e;
+            ghost.phy = reface->phy;ghost.otphy = reface->otphy;
             ghost.tur.miubl = reface->tur.miubl;
         }
     }
