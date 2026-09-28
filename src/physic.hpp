@@ -35,4 +35,5 @@ inline void cc::otphy::form_otphy(cc::vecp phy){
     e = get_energy(phy);
     a = get_sonic_velocity(phy.T);
     p = phy.rho*cc::R*phy.T;
+    mu = sutherland::dynamic_viscosity(phy.T);
 }

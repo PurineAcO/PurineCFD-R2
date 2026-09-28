@@ -209,7 +209,7 @@ inline bool readmesh(const char* path){
 }
 
 inline bool linkmesh(){
-    for(cc::cell_class& cell : cc::CellList){
+    allcell{
         for(int i=0;i<cell.ecnt;i++){
             cell.faces[i] = cc::link_face(cell.face[i]);
         }
@@ -224,7 +224,7 @@ inline bool linkmesh(){
             cc::FarFaces.push_back(&face);
         }
     }
-    for(cc::cell_class& cell : cc::CellList){
+    allcell{
         for(int i=0;i<cell.ecnt;i++){
             const cc::face_class& face = *cell.faces[i];
             cell.nei[i] = face.nei[0] == &cell ? face.nei[1] : face.nei[0];
@@ -265,8 +265,8 @@ inline bool link_structed_mesh(){
     }
     fclose(adj);
 
-    for(cc::cell_class& cell : cc::CellList){
-        for(int i=0;i<cell.ecnt;i++){
+    allcell{
+        allface(cell){
             cc::cell_class* other = cell.nei[i];
             if(other == nullptr){
                 if(cell.faces[i]->type == cc::WALL){cell.south = i;}
@@ -284,10 +284,10 @@ inline bool link_structed_mesh(){
         cell.westf = cell.faces[cell.west];
         cell.northf = cell.faces[cell.north];
         cell.southf = cell.faces[cell.south];
-        cell.eastf->iswedir = true;cell.eastf->low = &cell;
-        cell.westf->iswedir = true;cell.westf->high = &cell;
-        cell.northf->iswedir = false;cell.northf->low = &cell;
-        cell.southf->iswedir = false;cell.southf->high = &cell;
+        // cell.eastf->iswedir = true;cell.eastf->low = &cell;
+        // cell.westf->iswedir = true;cell.westf->high = &cell;
+        // cell.northf->iswedir = false;cell.northf->low = &cell;
+        // cell.southf->iswedir = false;cell.southf->high = &cell;
     }
     printf("Structured: %d x %d\n",smax,nmax);
     return true;

@@ -21,6 +21,7 @@ inline void noslip_wall_boundary(){
         wall->otphy.p = c->otphy.p;
         wall->phy.rho = c->otphy.p /(cc::R * c->phy.T);
         wall->tur.miubl = 0.0;
+        wall->form_otherphy();
     }
 }
 
@@ -59,5 +60,6 @@ inline void far_field_boundary(){
         far->otphy.p = s*std::pow(far->phy.rho,cc::gamma);
         far->phy.T = far->otphy.p/(cc::R*far->phy.rho);
         far->tur.miubl = miubl_inf;
+        far->form_otherphy();
     }
 }

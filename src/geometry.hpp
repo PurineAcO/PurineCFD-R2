@@ -43,7 +43,7 @@ static cc::vec2 triangle_center(double x1,double y1,double x2,double y2,double x
 
 inline void findnode(cc::cell_class& cell){
     short place = 0;
-    for(int i=0;i<cell.ecnt;i++){
+    allface(cell){
         if(!contains_node(cell.node,cell.faces[i]->node[0]->number - 1)){
             cell.node[place] = cell.faces[i]->node[0]->number - 1;
             place++;
@@ -100,7 +100,7 @@ inline void sad(cc::cell_class& cell){
 }
 
 inline void least_square_cell_based_preprocess(cc::cell_class &cell){
-    for(int i=0;i<cell.ecnt;i++){
+    allface(cell){
         cc::cell_class *nei = cell.nei[i];
         // 虚网格不带几何, 不参与最小二乘
         if(nei == nullptr || nei->index > cc::cell_num){
@@ -118,7 +118,7 @@ inline void least_square_cell_based_preprocess(cc::cell_class &cell){
 inline bool geometrymain(){
     if(!linkmesh())return false;
     if(structer::ifstructer && !link_structed_mesh())return false;
-    for(cc::cell_class& cell : cc::CellList){
+    allcell{
         findnode(cell);
         volume(cell);
         center(cell);
@@ -126,11 +126,6 @@ inline bool geometrymain(){
         if(!std::isfinite(cell.vol) || cell.vol <= 0.0){
             fprintf(stderr,"Error: cell #%d has an invalid area\n",cell.index);
             return false;
-        }
-        cell.invvol = 1.0/cell.vol;
-        for(int i=0;i<cell.ecnt;i++){
-            cell.proj.x += 0.5*std::abs(cell.faces[i]->nor.x);
-            cell.proj.y += 0.5*std::abs(cell.faces[i]->nor.y);
         }
     }
     return true;

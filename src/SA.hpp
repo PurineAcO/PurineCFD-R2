@@ -2,6 +2,7 @@
 
 #include "classconfig.hpp"
 #include "config.hpp"
+#include "convect.hpp"
 #include "physic.hpp"
 #include <cmath>
 
@@ -27,10 +28,12 @@ namespace SA {
 
     // 形成粘性通量
     void diffusion_SA(cc::face_class& face);
+    // 组装粘性通量
+    void assemble_visflux(cc::cell_class& cell);
     // 形成源项
     double source_SA(const cc::cell_class &cell);
     // RK子步内求解湍流方程(非守恒形式)
-    double SA_equation_after(cc::cell_class& cell,double dtau);
+    void SA_equation_after(cc::cell_class& cell,double dtau,double dt,bool urans);
 }
 
 static double _chi(double rho,double mu,double miubl){
@@ -62,7 +65,7 @@ static double _fw(double g){
 }
 
 inline double SA::source_SA(const cc::cell_class& cell){
-    double mu = sutherland::dynamic_viscosity(cell.phy.T);
+    double mu = cell.otphy.mu;
     double chi = _chi(cell.phy.rho,mu,cell.tur.miubl);
     double ft2 = _ft2(chi);
     double fv2 = _fv2(chi);
@@ -86,11 +89,11 @@ inline double SA::source_SA(const cc::cell_class& cell){
 }
 
 inline void SA::diffusion_SA(cc::face_class& face){
-    const double mu = sutherland::dynamic_viscosity(face.phy.T);
+    const double mu = face.otphy.mu;
     const double chi = _chi(face.phy.rho, mu, face.tur.miubl);
     const double mut = face.phy.rho * _fv1(chi) * face.tur.miubl;
     // Reynold 应力
-    const double mueff = mut + mu;
+    const double mueff = mut + mu;face.tur.mueff = mueff;
     const double tauxx = mueff*(4.0/3*face.phgrad.ugrad.x - 2.0/3*face.phgrad.vgrad.y);
     const double tauxy = mueff*(face.phgrad.ugrad.y + face.phgrad.vgrad.x);
     const double tauyy = mueff*(4.0/3*face.phgrad.vgrad.y - 2.0/3*face.phgrad.ugrad.x);
@@ -104,16 +107,23 @@ inline void SA::diffusion_SA(cc::face_class& face){
     face.visflux = face.toface_jacobi(visF,visG);
 }
 
-inline double SA::SA_equation_after(cc::cell_class &cell,double dtau){
-    double convect = 0.0;double diffusion = 0.0;
-    for(int i=0;i<cell.ecnt;i++){
+inline void SA::SA_equation_after(cc::cell_class &cell,double dtau,double dt,bool urans){
+    double convect = 0.0;double diffusion = 0.0;double new_miubl = 0.0;
+    allface(cell){
         cc::face_class *face = cell.faces[i];
         double mu = sutherland::dynamic_viscosity(face->phy.T);
         convect += cell.faces[i]->toface_jacobi(face->phy.u*face->tur.miubl,face->phy.v*face->tur.miubl);
         diffusion += cell.faces[i]->toface_jacobi((mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x
                                                 ,(mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x);
     }
-    double new_miubl = cell.tur.miubl + relax * dtau * ((diffusion - convect)/cell.vol + source_SA(cell));
-    cell.tur.miubl = new_miubl;
-    return new_miubl;
+    if(!urans) new_miubl = cell.tur.miubl + relax * dtau * ((diffusion - convect)/cell.vol + source_SA(cell));
+    else new_miubl = cell.tur.miubl - (1.0/cell.localdt + 1.0/(2*dt))*
+                    ((diffusion - convect)/cell.vol + source_SA(cell) + 1/(2*dt)*(cell.tur.miubl-cell.tur.miubl_former));
+    cell.tur.miubl = std::min(1e-6,new_miubl);
+    // return new_miubl;
+}
+
+inline void SA::assemble_visflux(cc::cell_class &cell){
+    cell.visflux.clear();
+    allface(cell) cell.visflux += cell.faces[i]->visflux * (2*cell.fnorm[i]-1);
 }

@@ -12,8 +12,8 @@ void least_square_cell_based(cc::cell_class& cell);
 inline void green_gauss_cell_based(cc::cell_class& cell){
     cell.phgrad.clear();
     cell.tur.miublgrad = {0.0,0.0};
-    for(int i=0;i<cell.ecnt;i++){
-        const double s = (2*cell.fnorm[i] - 1)*cell.invvol;
+    allface(cell){
+        const double s = (2*cell.fnorm[i] - 1)/cell.vol;
         cell.phgrad = (cell.faces[i]->phy * s) * cell.faces[i]->nor;
         cell.tur.miublgrad += (cell.faces[i]->tur.miubl*s)*cell.faces[i]->nor;
     }
@@ -22,7 +22,7 @@ inline void green_gauss_cell_based(cc::cell_class& cell){
 inline void least_square_cell_based(cc::cell_class &cell){
     // 预处理过程在least_square_cell_based_preprocess里,该函数定义在geometry
     double BU[5] = {};double BD[5] = {};
-    for(int i=0;i<cell.ecnt;i++){
+    allface(cell){
         cc::cell_class *nei = cell.nei[i];
         // 虚网格不带几何, 不参与最小二乘
         if(nei == nullptr || nei->index > cc::cell_num)continue;

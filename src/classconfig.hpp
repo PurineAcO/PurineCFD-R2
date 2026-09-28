@@ -5,6 +5,10 @@
 #include "config.hpp"
 #include <cmath>
 
+#define allface(cell) for(int i=0;i<cell.ecnt;i++)
+#define allcell for(cc::cell_class& cell: cc::CellList)
+#define allfac for(cc::face_class& face: cc::FaceList)
+
 namespace cc {
 
 struct cell_class;      // 网格
@@ -20,10 +24,10 @@ struct LSCBmatrix{
 };
 
 struct node_class{
-    int number = 0;         // 节点编号
-    double x = 0.0, y = 0.0;// 节点坐标
+    int number = 0;                     // 节点编号
+    double x = 0.0, y = 0.0;            // 节点坐标
     node_class() = default;
-    node_class(int number_,double x_,double y_);// 节点构造器
+    node_class(int number_,double x_,double y_);
 };
 
 struct face_class{
@@ -31,8 +35,8 @@ struct face_class{
     short type = INTER;             // 面类型
     node_class* node[2] = {};      // 面邻接点指针
     vec2 mid = {0.0,0.0};   // 面中点坐标
-    vec2 nor = {0.0,0.0};   // 面法向*面长
-    bool outer;                    // 面法向方向指示
+    vec2 nor = {0.0,0.0};   // 带面长法向量
+    bool outer;                    // 面法向方向01指示
     double len = 0.0;               // 面长度
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
@@ -45,18 +49,12 @@ struct face_class{
     struct otphy otnei[2];         // 左右引申物理量
 
     // 结构化网格参数
-    bool iswedir = false;           // 东西面指示
-    cell_class *low,*high;          // 高低侧网格指针
-
-    double volflux = 0.0;    // 单位厚度体积流量 (u·n)*Δs
-    double lam = 0.0;        // 谱半径 |u·n|*Δs + a*Δs
-    double coef = 0.0;       // ν̃的扩散系数
-    double turflux = 0.0;    // (∇ν̃·n)*Δs
+    // bool iswedir = false;       // 面方向指示
     vec4 convect;               // 无粘通量
     vec4 visflux;               // 黏性通量
 
     face_class() = default;
-    face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);// 面构造
+    face_class(int index_,int p1_,int p2_,int c1_,int c2_,short type_);
 
     // 法向量单位化
     vec2 length1_nor();
@@ -74,22 +72,21 @@ struct face_class{
 };
 
 struct cell_class{
-    int index = 0;     // 编号
-    int ecnt = 4;      // 面邻接边个数
-    int face[4] = {};  // 邻接面编号
+    int index = 0;                      // 编号
+    int ecnt = 4;                       // 面邻接边个数
+    int face[4] = {};                   // 邻接面编号
     int node[4] = {-1,-1,-1,-1}; // 邻接点下标
-    bool fnorm[4] = {}; // 邻接面外法向标记
-    cell_class* nei[4] = {};   // 邻接网格指针
-    face_class* faces[4] = {}; // 邻接面指针
-    double vol = 0.0;   // 体积(二维按单位厚度计)
-    double invvol = 0.0;// 1/vol
-    vec2 center;        // 中心坐标
-    vec2 proj;          // 各方向投影面积和,用于当地时间步长
+    bool fnorm[4] = {};                 // 邻接面外法向标记
+    cell_class* nei[4] = {};            // 邻接网格指针
+    face_class* faces[4] = {};          // 邻接面指针
+    double vol = 0.0;                   // 体积
+    vec2 center;                        // 中心坐标
 
     vecp phy;                    // 物理量
     otphy otphy;                 // 引申物理量
     vec4 conser;                 // 守恒量
     vec4 conserformer;           // 前期守恒量
+    vec4 lastconser;             // 上一时间步守恒量
     vec4 convect;                // 无粘对流项
     vec4 visflux;                // 黏性通量
     vecgrad phgrad;              // 物理量梯度
@@ -98,8 +95,8 @@ struct cell_class{
     turbulence tur;              // 湍流
     LSCBmatrix LSCB;             // LSCB梯度预处理矩阵
 
-    // 用于结构化网格选项
-    short east = -1,west = -1,north = -1,south = -1; // 东/西/南/北侧面在本格 faces 中的下标
+    // 东/西/南/北侧面在本格 faces 中的下标
+    short east = -1,west = -1,north = -1,south = -1; 
     face_class* eastf = nullptr;  // 东侧邻接面
     face_class* westf = nullptr;  // 西侧邻接面
     face_class* northf = nullptr; // 北侧邻接面
@@ -107,7 +104,7 @@ struct cell_class{
     int s = 0,n = 0;              // 环向/径向索引
 
     cell_class() = default;
-    cell_class(int index_,int f1_,int f2_,int f3_,int f4_);// 网格构造器
+    cell_class(int index_,int f1_,int f2_,int f3_,int f4_);
 
     // 由ρ,u,v,T形成e,p,a
     void form_otherphy();
@@ -119,6 +116,8 @@ struct cell_class{
     void prim();
     // 保存本步RK的基准状态
     void copyconver();
+    // 保存本时间步的基准状态
+    void copyconver_time();
 };
 
 inline std::vector<node_class> NodeList;    // 节点
@@ -176,7 +175,7 @@ inline void face_class::face_physic_mid(){
 
 inline void face_class::form_otherphy(){
     otphy.form_otphy(phy);
-    un = toface_jacobi(phy.u,phy.v)/std::sqrt(nor.x*nor.x+nor.y*nor.y);
+    un = toface_jacobi(phy.u,phy.v)/nor.norm();
 }
 
 inline void cell_class::form_otherphy(){
@@ -203,11 +202,17 @@ inline void cell_class::prim(){
     phy.v = conser.y/conser.c;
     double e = conser.e/conser.c;
     phy.T = (e - 0.5*(phy.u*phy.u + phy.v*phy.v))/cc::Cv;
+    form_otherphy();
 }
 
 inline void cell_class::copyconver(){
     conserformer = conser;
-    tur.miubl_former = tur.miubl;
+    if(!cc::urans)tur.miubl_former = tur.miubl;
+}
+
+inline void cell_class::copyconver_time(){
+    lastconser = conser;
+    if(cc::urans)tur.miubl_former = tur.miubl;
 }
 
 inline cell_class& gotocell(int number){ return CellList[number-1]; }

@@ -24,6 +24,7 @@ namespace cc {
     inline std::string fieldpath;   // 流场输出路径
     inline long long max_step = 0;  // 时间步数
     inline int threads = 0;         // OpenMP线程数, 0表示自动选择
+    inline bool urans = true;       // 是否是瞬态
 
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};
 
@@ -102,7 +103,7 @@ namespace cc {
     }
 
     struct otphy{
-        double a,p,e,un;
+        double a,p,e,un,mu;
         // 从原始物理量生成引申物理量
         otphy()=default;
         otphy(double a_,double p_,double e_):a(a_),p(p_),e(e_){}
@@ -116,6 +117,7 @@ namespace cc {
         double miubl_next = 0.0;   // 下一RK阶段的值,算完统一写回
         double sad = 0.0;          // 到最近壁面中点的距离
         vec2 miublgrad;            // miubl梯度
+        double mueff = 0.0;        // 有效粘性系数
     };
 
     // 用于JST的人工耗散
