@@ -61,8 +61,8 @@ inline bool dump_field(int step){
     for(const cc::cell_class& cell : cc::CellList){
         fprintf(fp,"%.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e %.8e\n",
                 cell.center.x,cell.center.y,cell.phy.rho,cell.phy.u,cell.phy.v,
-                cell.phy.T,cell.phy.p,
-                std::hypot(cell.phy.u,cell.phy.v)/cell.phy.a,cell.tur.miubl);
+                cell.phy.T,cell.otphy.p,
+                std::hypot(cell.phy.u,cell.phy.v)/cell.otphy.a,cell.tur.miubl);
     }
     if(ferror(fp)){
         fclose(fp);

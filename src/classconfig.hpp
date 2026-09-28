@@ -37,7 +37,7 @@ struct face_class{
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
     vecp phy;                       // 物理量
-    vecp phgrad;                    // 面法向梯度
+    vecgrad phgrad;                 // 面法向梯度
     struct otphy otphy;             // 引申物理量
     double un;                     // 面法向速度
     turbulence tur;                // 湍流

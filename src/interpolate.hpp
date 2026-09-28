@@ -5,7 +5,7 @@
 
 /*
 MUSCL只能建立邻接面的左物理量和右物理量,无论是结构网格还是非结构网格都显式依赖了梯度
-面上梯度的处理使用了正交和非正交分裂后修正的技术
+面上梯度按照OpenFOAM的fvc::interpolate::dotInterpolate进行重构,边界面上梯度暂使用一阶外推.
 */
 
 // 面上中心差分插值
@@ -17,26 +17,27 @@ void grad_onface(cc::face_class *face);
 
 inline void interpolate_mid(cc::face_class *face){face->face_physic_mid();}
 
-inline void muscl(cc::face_class *face){
+inline void muscl_face(cc::face_class *face){
     if(face->type != cc::INTER){return;}
     face->phynei[0] = face->nei[0]->phy + face->nei[0]->phgrad*(face->mid - face->nei[0]->center);
     face->phynei[1] = face->nei[1]->phy + face->nei[1]->phgrad*(face->mid - face->nei[1]->center);
 }
 
-inline void grad_onface(cc::face_class *face){
-    face->phgrad.clear();
-    if(face->type != cc::INTER) {
-        cc::cell_class* inner = (face->nei[0]->index<=cc::cell_num) ? face->nei[0] : face->nei[1];
-        face->phgrad = (face->phy - inner->phy)*(1.0/(face->mid-inner->center).norm());
+inline void grad_onface(cc::cell_class *cell){
+    for(int i=1;i<cell->ecnt;i++){
+        cell->faces[i]->phgrad.clear();cell->faces[i]->tur.miublgrad.clear();
+        if(cell->faces[i]->type == cc::INTER){
+        // cc::vec2 df = cell->nei[i]->center - cell->center;
+        // cc::vec2 nf = cell->faces[i]->nor * ((2*cell->fnorm[i] - 1) *1.0/(cell->faces[i]->nor.norm()));
+        // cc::vec2 kf = nf - 1.0/(cc::dot(nf,df)) * df;
+        double weight = cc::dot(cell->faces[i]->nor,cell->faces[i]->mid-cell->center)/
+        (cc::dot(cell->faces[i]->nor,cell->nei[i]->center-cell->faces[i]->mid) + cc::dot(cell->faces[i]->nor,cell->faces[i]->mid-cell->center));
+        cell->faces[i]->phgrad = weight * cell->phgrad + (1-weight) * cell->nei[i]->phgrad;
+        cell->faces[i]->tur.miublgrad = weight * cell->tur.miublgrad + (1-weight) * cell->nei[i]->tur.miublgrad;
+        }
+        else{
+        cell->faces[i]->phgrad = cell->phgrad;cell->faces[i]->tur.miublgrad = cell->tur.miublgrad;
+        if(cell->faces[i]->type == cc::WALL){cell->faces[i]->phgrad.rhograd.clear();cell->faces[i]->phgrad.Tgrad.clear();}
+        }
     }
-    cc::vec2 to = face->nei[1]->center - face->nei[0]->center;
-    cc::vec2 nor = face->nor * face->outer;
-    // 正交部分
-    face->phgrad += (face->nei[1]->phy-face->nei[0]->phy) * cc::dot(nor, to*(1.0/to.norm()));
-    // 非正交修正
-    cc::vec2 weight ={cc::dot(face->nei[1]->center-face->mid,nor),cc::dot(face->mid-face->nei[0]->center,nor)};
-    weight *= 1/(weight.x+weight.y);
-    cc::vecgrad no_grad = weight.x * face->nei[0]->phgrad + weight.y * face->nei[1]->phgrad;
-    cc::vec2 after = nor - cc::dot(nor, to*(1.0/to.norm())) * to*(1.0/to.norm());
-    face->phgrad += no_grad * after;
 }

@@ -29,7 +29,7 @@ inline void convect_JST(cc::face_class& face){
 inline void assemble_flux(cc::cell_class& cell,char fluxtype){
     for(int j=0;j<4;j++){
         cell.convect.clear();
-        cell.visflux.clear();
+        // cell.visflux.clear();
     }
     for(int i=0;i<cell.ecnt;i++){
         // TODO:需要在config.json保留一个JST或者ROE的选项,这里准备硬编码

@@ -5,6 +5,10 @@
 #include "physic.hpp"
 #include <cmath>
 
+/*
+根据Fluent的求解手段,miubl将会在一个RK内迭代步以后再进行更新,而不是跟随RK
+*/
+
 namespace SA {
     inline constexpr double Cb1 = 0.1355;
     inline constexpr double Cb2 = 0.622;
@@ -17,37 +21,39 @@ namespace SA {
     inline constexpr double kappa = 0.41;
     inline constexpr double inv_sigma = 1.5;
     inline constexpr double rmax = 10.0;
-    inline constexpr double relax = 0.5;    // 湍流方程欠松弛因子
+    inline constexpr double relax = 0.8;
     inline constexpr double Prt = 0.9;
     inline constexpr double C5 = 3.5;
 
-    // 形成湍流扩散项和黏性通量
+    // 形成粘性通量
     void diffusion_SA(cc::face_class& face);
+    // 形成源项
+    double source_SA(const cc::cell_class &cell);
     // RK子步内求解湍流方程(非守恒形式)
-    void SA_equation_RK(cc::cell_class& cell, double rk);
+    double SA_equation_after(cc::cell_class& cell,double dtau);
 }
 
-static double viscosity_ratio(double rho,double mu,double miubl){
+static double _chi(double rho,double mu,double miubl){
     return rho*(miubl > 0.0 ? miubl : 0.0)/mu;
 }
 
-static double compute_fv1(double chi){
+static double _fv1(double chi){
     return (chi*chi*chi)/(chi*chi*chi + SA::Cv1*SA::Cv1*SA::Cv1);
 }
 
-static double compute_ft2(double chi){
+static double _ft2(double chi){
     return SA::Ct3*std::exp(-SA::Ct4*chi*chi);
 }
 
-static double compute_fv2(double chi){
-    return 1 - chi/(1 + chi*compute_fv1(chi));
+static double _fv2(double chi){
+    return 1 - chi/(1 + chi*_fv1(chi));
 }
 
-static double compute_g(double r){
+static double _g(double r){
     return r + SA::Cw2*(r*r*r*r*r*r - r);
 }
 
-static double compute_fw(double g){
+static double _fw(double g){
     constexpr double cw3_squared = SA::Cw3*SA::Cw3;
     constexpr double cw3_sixth = cw3_squared*cw3_squared*cw3_squared;
     const double g_squared = g*g;
@@ -55,74 +61,59 @@ static double compute_fw(double g){
     return g*std::pow((1 + cw3_sixth)/(cw3_sixth + g_sixth),1.0/6);
 }
 
-static double source_SA(const cc::cell_class& cell){
+inline double SA::source_SA(const cc::cell_class& cell){
     double mu = sutherland::dynamic_viscosity(cell.phy.T);
-    double chi = viscosity_ratio(cell.phy.rho,mu,cell.tur.miubl);
-    double ft2 = compute_ft2(chi);
-    double fv2 = compute_fv2(chi);
-    double vorticity = std::abs(cell.phy.vgrad.x - cell.phy.ugrad.y);
+    double chi = _chi(cell.phy.rho,mu,cell.tur.miubl);
+    double ft2 = _ft2(chi);
+    double fv2 = _fv2(chi);
+    double vorticity = std::abs(cell.phgrad.vgrad.x - cell.phgrad.ugrad.y);
     const double scaled_nu = cell.tur.miubl*(1.0/(cell.tur.sad*cell.tur.sad))/(SA::kappa*SA::kappa);
     double modified_vorticity =
         std::max(vorticity + fv2*scaled_nu,std::max(0.3*vorticity,1e-20));
     double production = SA::Cb1*(1 - ft2)*modified_vorticity*cell.phy.rho*cell.tur.miubl;
     double r = std::min(scaled_nu/modified_vorticity,SA::rmax);
-    double g = compute_g(r);
+    double g = _g(r);
     double destruction = cell.phy.rho*
-                         (SA::Cw1*compute_fw(g) - SA::Cb1/SA::kappa/SA::kappa*ft2)*
+                         (SA::Cw1*_fw(g) - SA::Cb1/SA::kappa/SA::kappa*ft2)*
                          cell.tur.miubl*cell.tur.miubl*(1.0/(cell.tur.sad*cell.tur.sad));
     double gradient_source = SA::Cb2*SA::inv_sigma*cell.phy.rho*
                              cc::dot(cell.tur.miublgrad,cell.tur.miublgrad);
     // 部分论文中引入了可压缩性修正
-    double S2 = 2*cell.phy.ugrad.x*cell.phy.ugrad.x + 2*cell.phy.vgrad.y*cell.phy.vgrad.y + 
-                (cell.phy.ugrad.y + cell.phy.vgrad.x)*(cell.phy.ugrad.y + cell.phy.vgrad.x);
+    double S2 = 2*cell.phgrad.ugrad.x*cell.phgrad.ugrad.x + 2*cell.phgrad.vgrad.y*cell.phgrad.vgrad.y + 
+                (cell.phgrad.ugrad.y + cell.phgrad.vgrad.x)*(cell.phgrad.ugrad.y + cell.phgrad.vgrad.x);
     double compressible = SA::C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * S2 / (cc::gamma * cc::R * cell.phy.T);
     return production - destruction + gradient_source - compressible;
 }
 
 inline void SA::diffusion_SA(cc::face_class& face){
     const double mu = sutherland::dynamic_viscosity(face.phy.T);
-    face.volflux = face.phy.u*face.nor.x + face.phy.v*face.nor.y;
-    face.lam = std::abs(face.volflux) + face.phy.a*face.len;
-    face.coef = face.tur.miubl + mu/face.phy.rho;
-    face.turflux = face.tur.miublgrad.x*face.nor.x + face.tur.miublgrad.y*face.nor.y;
-    const double chi = viscosity_ratio(face.phy.rho,mu,face.tur.miubl);
-    const double mut = face.phy.rho*compute_fv1(chi)*face.tur.miubl;
-    const double mu_eff = mut + mu;
-    const double tau_xx = mu_eff*(4.0/3*face.phy.ugrad.x - 2.0/3*face.phy.vgrad.y);
-    const double tau_yy = mu_eff*(4.0/3*face.phy.vgrad.y - 2.0/3*face.phy.ugrad.x);
-    const double tau_xy = mu_eff*(face.phy.ugrad.y + face.phy.vgrad.x);
-    const double lambda_eff = mu/cc::Pr + mut/SA::Prt;
-    const cc::vec2 q = {-lambda_eff*cc::Cp*face.phy.Tgrad.x,
-                        -lambda_eff*cc::Cp*face.phy.Tgrad.y};
-    face.visflux[0] = 0.0;
-    face.visflux[1] = tau_xx*face.nor.x + tau_xy*face.nor.y;
-    face.visflux[2] = tau_xy*face.nor.x + tau_yy*face.nor.y;
-    face.visflux[3] = (face.phy.u*tau_xx + face.phy.v*tau_xy - q.x)*face.nor.x +
-                      (face.phy.u*tau_xy + face.phy.v*tau_yy - q.y)*face.nor.y;
+    const double chi = _chi(face.phy.rho, mu, face.tur.miubl);
+    const double mut = face.phy.rho * _fv1(chi) * face.tur.miubl;
+    // Reynold 应力
+    const double mueff = mut + mu;
+    const double tauxx = mueff*(4.0/3*face.phgrad.ugrad.x - 2.0/3*face.phgrad.vgrad.y);
+    const double tauxy = mueff*(face.phgrad.ugrad.y + face.phgrad.vgrad.x);
+    const double tauyy = mueff*(4.0/3*face.phgrad.vgrad.y - 2.0/3*face.phgrad.ugrad.x);
+    // 热流
+    const double lambdaeff = mu/cc::Pr + mut/Prt;
+    const cc::vec2 q = -lambdaeff * cc::Cp * face.phgrad.Tgrad;
+    // 粘性通量
+    const cc::vec4 visF(0,tauxx,tauxy,face.phy.u*tauxx + face.phy.v*tauxy - q.x);
+    const cc::vec4 visG(0,tauxy,tauyy,face.phy.u*tauxy + face.phy.v*tauyy - q.y);
+    face.visflux.clear();
+    face.visflux = face.toface_jacobi(visF,visG);
 }
 
-inline void SA::SA_equation_RK(cc::cell_class& cell,double rk){
-    double rhs = 0.0;
-    double velocity_divergence = 0.0;
+inline double SA::SA_equation_after(cc::cell_class &cell,double dtau){
+    double convect = 0.0;double diffusion = 0.0;
     for(int i=0;i<cell.ecnt;i++){
-        cc::face_class* face = cell.faces[i];
-        int outward_sign = 2*cell.fnorm[i] - 1;
-        double outward_volume_flux = outward_sign*face->volflux;
-        double upwind = cell.tur.miubl;
-        if(outward_volume_flux < 0.0){
-            if(cell.nei[i] != nullptr){
-                upwind = cell.nei[i]->tur.miubl;
-            }else{
-                upwind = face->tur.miubl;
-            }
-        }
-        double diffusivity = face->coef;
-        double outward_gradient_flux = outward_sign*face->turflux;
-        rhs += (outward_volume_flux*upwind -
-                SA::inv_sigma*diffusivity*outward_gradient_flux)*cell.invvol;
-        velocity_divergence += outward_volume_flux*cell.invvol;
+        cc::face_class *face = cell.faces[i];
+        double mu = sutherland::dynamic_viscosity(face->phy.T);
+        convect += cell.faces[i]->toface_jacobi(face->phy.u*face->tur.miubl,face->phy.v*face->tur.miubl);
+        diffusion += cell.faces[i]->toface_jacobi((mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x
+                                                ,(mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x);
     }
-    rhs -= source_SA(cell)/cell.phy.rho + cell.tur.miubl*velocity_divergence;
-    double next = cell.tur.miubl_former - SA::relax*rk*cell.localdt*rhs;
-    cell.tur.miubl_next = std::isfinite(next) ? std::max(next,0.0) : next;
+    double new_miubl = cell.tur.miubl + relax * dtau * ((diffusion - convect)/cell.vol + source_SA(cell));
+    cell.tur.miubl = new_miubl;
+    return new_miubl;
 }

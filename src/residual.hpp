@@ -31,7 +31,7 @@ inline void report_update(int step){
     double sum_square[fields] = {};
     for(int i=0;i<cc::cell_num;i++){
         cc::cell_class& cell = cc::CellList[i];
-        double state[fields] = {cell.phy.rho,cell.phy.u,cell.phy.v,cell.phy.e,cell.tur.miubl};
+        double state[fields] = {cell.phy.rho,cell.phy.u,cell.phy.v,cell.otphy.e,cell.tur.miubl};
         if(first){
             for(int s=0;s<fields;s++){
                 former[i][s] = state[s];
