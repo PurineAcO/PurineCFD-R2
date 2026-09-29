@@ -13,9 +13,9 @@ inline void std_initialize(){
     double rho_inf = FAR_DEFINE.p/(cc::R*FAR_DEFINE.T);
     double miubl_inf = 3.0*sutherland::dynamic_viscosity(FAR_DEFINE.T)/rho_inf;
     allcell{
-        cell.phy = cc::vecp(rho_inf,FAR_DEFINE.u,FAR_DEFINE.v,FAR_DEFINE.T);
-        cell.otphy = cc::otphy(get_sonic_velocity(FAR_DEFINE.T),FAR_DEFINE.p,get_energy(cell.phy));
-        cell.tur.miubl = miubl_inf;
+        icell(i).phy = cc::vecp(rho_inf,FAR_DEFINE.u,FAR_DEFINE.v,FAR_DEFINE.T);
+        icell(i).otphy = cc::otphy(get_sonic_velocity(FAR_DEFINE.T),FAR_DEFINE.p,get_energy(icell(i).phy));
+        icell(i).tur.miubl = miubl_inf;
     }
     for(cc::face_class& face : cc::FaceList){
         face.tur.miubl = (face.type == cc::WALL) ? 0.0 : miubl_inf;

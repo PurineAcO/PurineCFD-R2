@@ -14,6 +14,16 @@ target_compile_options(purinecfd PRIVATE -Wall -Wextra -Wpedantic -Werror
                        -Wno-error=unused-parameter -Wno-error=unused-variable
                        -fno-math-errno)
 
+# 单步调试用的小程序: 直接 include src 下的头文件, 因此需要把 src 加进搜索路径
+add_executable(debug tests/debug.cpp)
+target_compile_features(debug PRIVATE cxx_std_17)
+target_include_directories(debug PRIVATE src)
+target_include_directories(debug SYSTEM PRIVATE third_party)
+target_link_libraries(debug PRIVATE OpenMP::OpenMP_CXX)
+target_compile_options(debug PRIVATE -g -O0 -Wall -Wextra -Wpedantic -Werror
+                       -Wno-error=unused-parameter -Wno-error=unused-variable
+                       -fno-math-errno)
+
 option(PURINE_NATIVE "Optimize for the build machine" OFF)
 option(PURINE_SANITIZE "Enable AddressSanitizer and UBSan" OFF)
 if(PURINE_NATIVE)

@@ -2,7 +2,6 @@
 
 #include "classconfig.hpp"
 #include "config.hpp"
-#include "convect.hpp"
 #include "physic.hpp"
 #include <cmath>
 
@@ -82,7 +81,7 @@ inline double SA::source_SA(const cc::cell_class& cell){
     double gradient_source = SA::Cb2*SA::inv_sigma*cell.phy.rho*
                              cc::dot(cell.tur.miublgrad,cell.tur.miublgrad);
     // 部分论文中引入了可压缩性修正
-    double S2 = 2*cell.phgrad.ugrad.x*cell.phgrad.ugrad.x + 2*cell.phgrad.vgrad.y*cell.phgrad.vgrad.y + 
+    double S2 = 2*cell.phgrad.ugrad.x*cell.phgrad.ugrad.x + 2*cell.phgrad.vgrad.y*cell.phgrad.vgrad.y +
                 (cell.phgrad.ugrad.y + cell.phgrad.vgrad.x)*(cell.phgrad.ugrad.y + cell.phgrad.vgrad.x);
     double compressible = SA::C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * S2 / (cc::gamma * cc::R * cell.phy.T);
     return production - destruction + gradient_source - compressible;

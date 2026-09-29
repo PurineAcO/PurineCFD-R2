@@ -64,7 +64,13 @@ with (out / 'mesh.txt').open('w') as f:
   f.write('(end)\n(cell)\n')
   for i, row in enumerate(cells, 1):
     f.write(' '.join(map(str, (i, *row))) + '\n')
-T, Ma, Re, D, R = 300.0, 0.2, 45.0, 1.0, 287.05
+# 结构化邻接表: 首行 S_MAX N_MAX, 随后每行 s,n,cell
+with (out / 'mesh_struct.txt').open('w') as f:
+  f.write(f'{nt} {nr}\n')
+  for j in range(nr):
+    for i in range(nt):
+      f.write(f'{i + 1},{j + 1},{j * nt + i + 1}\n')
+T, Ma, Re, D, R = 300.0, 0.2, 1000.0, 1.0, 287.05
 mu = 1.716e-5 * (T / 273.15) ** 1.5 * (273.15 + 110.4) / (T + 110.4)
 U = Ma * math.sqrt(1.4 * R * T)
 rho = Re * mu / (U * D)

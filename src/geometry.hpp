@@ -119,12 +119,12 @@ inline bool geometrymain(){
     if(!linkmesh())return false;
     if(structer::ifstructer && !link_structed_mesh())return false;
     allcell{
-        findnode(cell);
-        volume(cell);
-        center(cell);
-        cell.face_normal_out();
-        if(!std::isfinite(cell.vol) || cell.vol <= 0.0){
-            fprintf(stderr,"Error: cell #%d has an invalid area\n",cell.index);
+        findnode(icell(i));
+        volume(icell(i));
+        center(icell(i));
+        icell(i).face_normal_out();
+        if(!std::isfinite(icell(i).vol) || icell(i).vol <= 0.0){
+            fprintf(stderr,"Error: cell #%d has an invalid area\n",icell(i).index);
             return false;
         }
     }

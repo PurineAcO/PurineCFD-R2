@@ -210,8 +210,8 @@ inline bool readmesh(const char* path){
 
 inline bool linkmesh(){
     allcell{
-        for(int i=0;i<cell.ecnt;i++){
-            cell.faces[i] = cc::link_face(cell.face[i]);
+        for(int i=0;i<icell(i).ecnt;i++){
+            icell(i).faces[i] = cc::link_face(icell(i).face[i]);
         }
     }
     for(cc::face_class& face : cc::FaceList){
@@ -225,9 +225,9 @@ inline bool linkmesh(){
         }
     }
     allcell{
-        for(int i=0;i<cell.ecnt;i++){
-            const cc::face_class& face = *cell.faces[i];
-            cell.nei[i] = face.nei[0] == &cell ? face.nei[1] : face.nei[0];
+        for(int i=0;i<icell(i).ecnt;i++){
+            const cc::face_class& face = *icell(i).faces[i];
+            icell(i).nei[i] = face.nei[0] == &icell(i) ? face.nei[1] : face.nei[0];
         }
     }
     if(cc::WallFaces.empty() || cc::FarFaces.empty()){
@@ -266,24 +266,24 @@ inline bool link_structed_mesh(){
     fclose(adj);
 
     allcell{
-        allface(cell){
-            cc::cell_class* other = cell.nei[i];
+        allface(icell(i)){
+            cc::cell_class* other = icell(i).nei[i];
             if(other == nullptr){
-                if(cell.faces[i]->type == cc::WALL){cell.south = i;}
-                else{cell.north = i;}
+                if(icell(i).faces[i]->type == cc::WALL){icell(i).south = i;}
+                else{icell(i).north = i;}
                 continue;
             }
-            const int ds = ((other->s - cell.s) % smax + smax) % smax;
-            const int dn = other->n - cell.n;
-            if(ds == 1){cell.east = i;}
-            else if(ds == smax-1){cell.west = i;}
-            else if(dn == 1){cell.north = i;}
-            else if(dn == -1){cell.south = i;}
+            const int ds = ((other->s - icell(i).s) % smax + smax) % smax;
+            const int dn = other->n - icell(i).n;
+            if(ds == 1){icell(i).east = i;}
+            else if(ds == smax-1){icell(i).west = i;}
+            else if(dn == 1){icell(i).north = i;}
+            else if(dn == -1){icell(i).south = i;}
         }
-        cell.eastf = cell.faces[cell.east];
-        cell.westf = cell.faces[cell.west];
-        cell.northf = cell.faces[cell.north];
-        cell.southf = cell.faces[cell.south];
+        icell(i).eastf = icell(i).faces[icell(i).east];
+        icell(i).westf = icell(i).faces[icell(i).west];
+        icell(i).northf = icell(i).faces[icell(i).north];
+        icell(i).southf = icell(i).faces[icell(i).south];
         // cell.eastf->iswedir = true;cell.eastf->low = &cell;
         // cell.westf->iswedir = true;cell.westf->high = &cell;
         // cell.northf->iswedir = false;cell.northf->low = &cell;

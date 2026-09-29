@@ -41,33 +41,34 @@ inline void local_timestep(cc::cell_class &cell){
 
 inline void one_rans(double dt,bool urans){
     // 复制当前伪时间步的守恒量
-    allcell cell.copyconver();
+    allcell icell(i).copyconver();
     forrk(RK::RK3){
         // 恢复基本物理量
-        allcell cell.prim();
+        allcell icell(i).prim();
         // 边界条件
         noslip_wall_boundary();far_field_boundary();
         // 更新虚拟网格
         update_ghost_field();
         // 面上插值
-        allfac interpolate_mid(&face);
-        allfac muscl(&face);
+        allfac interpolate_mid(&iface(i));
+        allfac muscl(&iface(i));
         // 建立梯度
-        allcell least_square_cell_based(cell);
-        allcell grad_onface(cell);
+        allcell least_square_cell_based(icell(i));
+        allcell grad_onface(icell(i));
         // 形成对流项
-        allfac convect_ROE(face); 
-        allcell assemble_flux(cell);
+        allfac convect_ROE(iface(i)); 
+        allcell assemble_flux(icell(i));
         // 形成扩散项
-        allfac SA::diffusion_SA(face);
-        allcell SA::assemble_visflux(cell);
+        allfac SA::diffusion_SA(iface(i));
+        allcell SA::assemble_visflux(icell(i));
         // 得到当地时间
-        allcell local_timestep(cell);
+        allcell local_timestep(icell(i));
         // RK显式迭代
-        if(!urans) allcell cell.conser = cell.conserformer - RK::RK3[z]/cell.vol*cell.localdt*(cell.convect-cell.visflux);
-        else allcell cell.conser = cell.conserformer - RK::RK3[z]/(1.0/cell.localdt + 1.0/(2*dt))*
-                    (1.0/cell.vol*(cell.convect-cell.visflux)+1/(2*dt)*(cell.conser-cell.lastconser));
+        if(!urans) allcell icell(i).conser = icell(i).conserformer - RK::RK3[z]/icell(i).vol*icell(i).localdt
+                                            *(icell(i).convect-icell(i).visflux);
+        else allcell icell(i).conser = icell(i).conserformer - RK::RK3[z]/(1.0/icell(i).localdt + 1.0/(2*dt))*
+                    (1.0/icell(i).vol*(icell(i).convect-icell(i).visflux)+1/(2*dt)*(icell(i).conser-icell(i).lastconser));
     }
     // 求解SA输运方程
-    allcell SA::SA_equation_after(cell,cell.localdt,dt,cc::urans);
+    allcell SA::SA_equation_after(icell(i),icell(i).localdt,dt,cc::urans);
 }

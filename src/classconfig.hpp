@@ -6,8 +6,10 @@
 #include <cmath>
 
 #define allface(cell) for(int i=0;i<cell.ecnt;i++)
-#define allcell for(cc::cell_class& cell: cc::CellList)
-#define allfac for(cc::face_class& face: cc::FaceList)
+#define allcell for(int i=0;i<cc::cell_num;i++)
+#define icell(i) cc::CellList[i]
+#define allfac for(int i=0;i<cc::face_num;i++)
+#define iface(i) cc::FaceList[i]
 
 namespace cc {
 
@@ -83,7 +85,7 @@ struct cell_class{
     vec2 center;                        // 中心坐标
 
     vecp phy;                    // 物理量
-    otphy otphy;                 // 引申物理量
+    struct otphy otphy;                 // 引申物理量
     vec4 conser;                 // 守恒量
     vec4 conserformer;           // 前期守恒量
     vec4 lastconser;             // 上一时间步守恒量

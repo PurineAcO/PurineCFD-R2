@@ -1,7 +1,7 @@
 {
   "io": {
     "mesh": "cases/cylinder/mesh.txt",
-    "structured": false,
+    "structured": "cases/cylinder/mesh_struct.txt",
     "log": "run/run.log",
     "field": "run/field"
   },
@@ -14,7 +14,7 @@
   "farfield": {
     "Ma": 0.2,
     "T": 300.0,
-    "p": 1.0300774894575035,
+    "p": 22.89061087683341,
     "alpha": 0.0
   }
 }
