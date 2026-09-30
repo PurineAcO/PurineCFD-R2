@@ -2,6 +2,7 @@
 
 #include "classconfig.hpp"
 #include "config.hpp"
+#include "dissipation.hpp"
 #include <cmath>
 #include <linux/stat.h>
 
@@ -13,7 +14,7 @@ Roe 通量对方向是有要求的,也就是说必须保证面上的法向量是
 // 无粘通量
 void convect_JST(cc::face_class& face);
 // 汇总单元各面的无粘和黏性通量
-void assemble_flux(cc::cell_class& cell);
+void assemble_flux(cc::cell_class& cell,char fluxtype = 'R');
 // Roe无粘通量
 void convect_ROE(cc::face_class &face);
 
@@ -23,14 +24,12 @@ inline void convect_JST(cc::face_class& face){
     const double p = cc::R*rho*face.phy.T;
     const cc::vec4 F = {rho*u,rho*u*u + p,rho*u*v,rho*u*H};
     const cc::vec4 G = {rho*v,rho*u*v,rho*v*v + p,rho*v*H};
-    face.toface_jacobi(F,G);
+    face.convect = face.toface_jacobi(F,G);
+    jst::dissipation(face);
 }
 
 inline void assemble_flux(cc::cell_class& cell,char fluxtype){
-    for(int j=0;j<4;j++){
-        cell.convect.clear();
-        // cell.visflux.clear();
-    }
+    cell.convect.clear();
     for(int i=0;i<cell.ecnt;i++){
         // TODO:需要在config.json保留一个JST或者ROE的选项,这里准备硬编码
         if(fluxtype=='J'){cell.convect += (2*cell.fnorm[i]-1)*cell.faces[i]->convect;}
@@ -58,8 +57,12 @@ inline void convect_ROE(cc::face_class &face){
     const double Hbl = (sl*Hl + sh*Hh)/(sl+sh);
     double abl = std::sqrt((cc::gamma-1) * (Hbl - 0.5 * (ubl*ubl + vbl*vbl)));
     double length = std::sqrt(face.nor.x*face.nor.x + face.nor.y*face.nor.y);
-    double nx = face.nor.x/length*face.outer;
-    double ny = face.nor.y/length*face.outer;
+    // 边界面 nei[0] 可能为空, 此时 outer 仍是默认值, 必须现场判向
+    const double sign = face.nei[0] != nullptr
+        ? (cc::dot(face.nor,face.mid - face.nei[0]->center) > 0 ? 1.0 : -1.0)
+        : (cc::dot(face.nor,face.nei[1]->center - face.mid) > 0 ? 1.0 : -1.0);
+    double nx = face.nor.x/length*sign;
+    double ny = face.nor.y/length*sign;
     double unbl = ubl * nx + vbl * ny;
     double utbl = vbl * nx - ubl * ny;
 
@@ -90,4 +93,5 @@ inline void convect_ROE(cc::face_class &face){
     // 形成面上对流通量(最后乘面长)
     face.convect = 0.5 * (FL+FR);
     for(int i=0;i<4;i++){face.convect -= 0.5*lambda[i]*alpha[i]*tz[i];}
+    face.convect = face.convect * length;
 }

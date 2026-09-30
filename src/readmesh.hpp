@@ -210,8 +210,8 @@ inline bool readmesh(const char* path){
 
 inline bool linkmesh(){
     allcell{
-        for(int i=0;i<icell(i).ecnt;i++){
-            icell(i).faces[i] = cc::link_face(icell(i).face[i]);
+        for(int j=0;j<icell(i).ecnt;j++){
+            icell(i).faces[j] = cc::link_face(icell(i).face[j]);
         }
     }
     for(cc::face_class& face : cc::FaceList){
@@ -225,9 +225,9 @@ inline bool linkmesh(){
         }
     }
     allcell{
-        for(int i=0;i<icell(i).ecnt;i++){
-            const cc::face_class& face = *icell(i).faces[i];
-            icell(i).nei[i] = face.nei[0] == &icell(i) ? face.nei[1] : face.nei[0];
+        for(int j=0;j<icell(i).ecnt;j++){
+            const cc::face_class& face = *icell(i).faces[j];
+            icell(i).nei[j] = face.nei[0] == &icell(i) ? face.nei[1] : face.nei[0];
         }
     }
     if(cc::WallFaces.empty() || cc::FarFaces.empty()){
@@ -266,19 +266,19 @@ inline bool link_structed_mesh(){
     fclose(adj);
 
     allcell{
-        allface(icell(i)){
-            cc::cell_class* other = icell(i).nei[i];
+        for(int j=0;j<icell(i).ecnt;j++){
+            cc::cell_class* other = icell(i).nei[j];
             if(other == nullptr){
-                if(icell(i).faces[i]->type == cc::WALL){icell(i).south = i;}
-                else{icell(i).north = i;}
+                if(icell(i).faces[j]->type == cc::WALL){icell(i).south = j;}
+                else{icell(i).north = j;}
                 continue;
             }
             const int ds = ((other->s - icell(i).s) % smax + smax) % smax;
             const int dn = other->n - icell(i).n;
-            if(ds == 1){icell(i).east = i;}
-            else if(ds == smax-1){icell(i).west = i;}
-            else if(dn == 1){icell(i).north = i;}
-            else if(dn == -1){icell(i).south = i;}
+            if(ds == 1){icell(i).east = j;}
+            else if(ds == smax-1){icell(i).west = j;}
+            else if(dn == 1){icell(i).north = j;}
+            else if(dn == -1){icell(i).south = j;}
         }
         icell(i).eastf = icell(i).faces[icell(i).east];
         icell(i).westf = icell(i).faces[icell(i).west];

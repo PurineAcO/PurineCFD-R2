@@ -16,6 +16,7 @@ namespace cc {
     inline long long max_step = 0;  // 时间步数
     inline int threads = 0;         // OpenMP线程数, 0表示自动选择
     inline bool urans = true;       // 是否是瞬态
+    inline char scheme = 'R';       // 无粘通量格式: 'R'=Roe, 'J'=JST
 
     struct ivec2{int x = 0;int y = 0;ivec2() = default;ivec2(int x_,int y_):x(x_),y(y_){}};
 

@@ -59,7 +59,8 @@ inline void far_field_boundary(){
         far->phy.rho = std::pow(a_star*a_star/(cc::gamma*s),1.0/(cc::gamma - 1.0));
         far->otphy.p = s*std::pow(far->phy.rho,cc::gamma);
         far->phy.T = far->otphy.p/(cc::R*far->phy.rho);
-        far->tur.miubl = miubl_inf;
+        // 入流给自由流值, 出流外推, 否则远场会把 ν̃ 钉死并造出假梯度
+        far->tur.miubl = vn_star >= 0.0 ? c->tur.miubl : miubl_inf;
         far->form_otherphy();
     }
 }

@@ -38,7 +38,7 @@ struct face_class{
     node_class* node[2] = {};      // 面邻接点指针
     vec2 mid = {0.0,0.0};   // 面中点坐标
     vec2 nor = {0.0,0.0};   // 带面长法向量
-    bool outer;                    // 面法向方向01指示
+    bool outer = false;            // 面法向与nei[0]->nei[1]同向时为true
     double len = 0.0;               // 面长度
     int cell_1 = -1, cell_2 = -1;  // 面邻接网格编号
     cell_class* nei[2] = {};       // 面邻接网格指针
@@ -158,7 +158,7 @@ inline face_class::face_class(int index_,int p1_,int p2_,int c1_,int c2_,short t
     node[1] = &NodeList[p2_-1];
     mid = vec2{0.5*(node[0]->x + node[1]->x),0.5*(node[0]->y + node[1]->y)};
     nor = vec2{node[0]->y - node[1]->y,node[1]->x - node[0]->x};
-    len = std::hypot(nor.x,nor.y);
+    len = nor.norm();
 }
 
 inline cell_class::cell_class(int index_,int f1_,int f2_,int f3_,int f4_)
@@ -195,7 +195,8 @@ inline void cell_class::face_normal_out(){
 }
 
 inline void face_class::normal_out(){
-    outer = dot(nor,nei[1]->center-nei[0]->center) > 0;
+    // 大长宽比网格上质心差近似垂直于面法向, 必须用面中点判向
+    outer = dot(nor,mid-nei[0]->center) > 0;
 }
 
 inline void cell_class::prim(){

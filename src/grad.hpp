@@ -14,7 +14,7 @@ inline void green_gauss_cell_based(cc::cell_class& cell){
     cell.tur.miublgrad = {0.0,0.0};
     allface(cell){
         const double s = (2*cell.fnorm[i] - 1)/cell.vol;
-        cell.phgrad = (cell.faces[i]->phy * s) * cell.faces[i]->nor;
+        cell.phgrad = cell.phgrad + (cell.faces[i]->phy * s) * cell.faces[i]->nor;
         cell.tur.miublgrad += (cell.faces[i]->tur.miubl*s)*cell.faces[i]->nor;
     }
 }

@@ -7,8 +7,8 @@ parser = argparse.ArgumentParser(description='Generate the Ma=0.2, Re=45 cylinde
 parser.add_argument('output', nargs='?', type=Path, default=Path(__file__).resolve().parent)
 out = parser.parse_args().output.resolve()
 out.mkdir(parents=True, exist_ok=True)
-nt, nr = 128, 96
-radius, outer_radius, first_height = 0.5, 30.0, 0.006
+nt, nr = 192, 128
+radius, outer_radius, first_height = 0.5, 30.0, 0.0015
 lo, hi = 1.0, 1.2
 for _ in range(80):
   q = (lo + hi) / 2

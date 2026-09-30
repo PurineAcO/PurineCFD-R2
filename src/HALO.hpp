@@ -83,7 +83,7 @@ inline void update_ghost_field(){
             const cc::cell_class& inner = *gotoHALO(1-n,s);
             ghost.phy = inner.phy;ghost.otphy = inner.otphy;
             ghost.phy.u = -inner.phy.u;ghost.phy.v = -inner.phy.v;
-            ghost.tur.miubl = -inner.tur.miubl;
+            ghost.tur.miubl = inner.tur.miubl;
         }
     }
 

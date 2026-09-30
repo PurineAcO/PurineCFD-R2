@@ -110,16 +110,23 @@ inline void SA::SA_equation_after(cc::cell_class &cell,double dtau,double dt,boo
     double convect = 0.0;double diffusion = 0.0;double new_miubl = 0.0;
     allface(cell){
         cc::face_class *face = cell.faces[i];
-        double mu = sutherland::dynamic_viscosity(face->phy.T);
-        convect += cell.faces[i]->toface_jacobi(face->phy.u*face->tur.miubl,face->phy.v*face->tur.miubl);
-        diffusion += cell.faces[i]->toface_jacobi((mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x
-                                                ,(mu+face->phy.rho*face->tur.miubl)*face->tur.miublgrad.x);
+        const double mu = sutherland::dynamic_viscosity(face->phy.T);
+        // 统一成外法向
+        const double outer = 2*cell.fnorm[i] - 1;
+        const double coef = inv_sigma*(mu + face->phy.rho*face->tur.miubl);
+        // 对流项必须带 rho, 其余各项已带 rho, 统一除以 rho 才是非守恒形式
+        convect += outer * face->toface_jacobi(face->phy.rho*face->phy.u*face->tur.miubl,
+                                               face->phy.rho*face->phy.v*face->tur.miubl);
+        diffusion += outer * face->toface_jacobi(coef*face->tur.miublgrad.x,coef*face->tur.miublgrad.y);
     }
-    if(!urans) new_miubl = cell.tur.miubl + relax * dtau * ((diffusion - convect)/cell.vol + source_SA(cell));
-    else new_miubl = cell.tur.miubl - (1.0/cell.localdt + 1.0/(2*dt))*
-                    ((diffusion - convect)/cell.vol + source_SA(cell) + 1/(2*dt)*(cell.tur.miubl-cell.tur.miubl_former));
-    cell.tur.miubl = std::min(1e-6,new_miubl);
-    // return new_miubl;
+    const double rhs = (diffusion - convect)/(cell.vol) + source_SA(cell);
+    if(!urans){
+        new_miubl = (cell.conserformer.c*cell.tur.miubl + relax * dtau * rhs)/cell.phy.rho;
+    }else{
+        new_miubl =( cell.conserformer.c*cell.tur.miubl + (rhs - (cell.tur.miubl - cell.tur.miubl_former)/(2*dt))/
+                                      (1.0/dtau + 1.0/(2*dt)))/cell.phy.rho;
+    }
+    cell.tur.miubl = std::max(0.0,new_miubl);
 }
 
 inline void SA::assemble_visflux(cc::cell_class &cell){

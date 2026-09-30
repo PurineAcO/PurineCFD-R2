@@ -123,10 +123,11 @@ inline bool geometrymain(){
         volume(icell(i));
         center(icell(i));
         icell(i).face_normal_out();
-        if(!std::isfinite(icell(i).vol) || icell(i).vol <= 0.0){
-            fprintf(stderr,"Error: cell #%d has an invalid area\n",icell(i).index);
-            return false;
-        }
+        sad(icell(i));
+    }
+    // face.outer 依赖格子质心, 必须在 center 之后才定
+    for(cc::face_class& face : cc::FaceList){
+        if(face.type == cc::INTER) face.normal_out();
     }
     return true;
 }
