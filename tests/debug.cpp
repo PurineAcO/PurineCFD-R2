@@ -1551,6 +1551,11 @@ static bool check_14_run(double dt,int subiter,int steps){
         return ok;
     }
     fprintf(fp,"step,res_conser,res_convect,res_visflux,max_miubl,min_localdt\n");
+    FILE* inner_fp = out_open("inner_residual.csv");
+    std::vector<cc::vec4> inner_before(cc::cell_num);
+    if(inner_fp != nullptr){
+        fprintf(inner_fp,"step,k,inner_residual\n");
+    }
     for(int n=1;n<=steps;n++){
         snapshot(conser0,bl0);
         #pragma omp parallel for schedule(static)
@@ -1558,7 +1563,17 @@ static bool check_14_run(double dt,int subiter,int steps){
             cc::CellList[c].copyconver_time();
         }
         for(int k=0;k<subiter;k++){
+            const bool trace_inner = (inner_fp != nullptr) && (n <= 50);
+            if(trace_inner){
+                #pragma omp parallel for schedule(static)
+                for(int c=0;c<cc::cell_num;c++){
+                    inner_before[c] = cc::CellList[c].conser;
+                }
+            }
             pseudo_step_omp(dt,true);
+            if(trace_inner){
+                fprintf(inner_fp,"%d,%d,%.6e\n",n,k+1,increment_l2(inner_before));
+            }
         }
         double maxbl = 0.0,min_dt = 1e300,rc = 0.0,rx = 0.0,rv = 0.0;
         int bad = 0;
@@ -1612,6 +1627,9 @@ static bool check_14_run(double dt,int subiter,int steps){
         }
     }
     fclose(fp);
+    if(inner_fp != nullptr){
+        fclose(inner_fp);
+    }
     const bool ok = nan_step == 0 && std::isfinite(last_l2);
     g_info = fmt("%d 步无异常, 每步 L2(dU) %.3e -> %.3e",steps,l2_first,last_l2);
     return ok;
@@ -1966,6 +1984,23 @@ int main(int argc,char** argv){
     const bool ok13 = check_13_step(dt,subiter);
     check_end(ok13,g_info);
     check_begin(14,fmt(g_rans ? "短跑 %d 次稳态迭代" : "短跑 %d 个物理步",steps).c_str());
+    // 对称网格上反对称模态只能从舍入误差长起, 这里给个 2% 的局部反对称种子
+    if(!g_rans){
+        const double amp = 0.02*U_inf;
+        #pragma omp parallel for schedule(static)
+        for(int c=0;c<cc::cell_num;c++){
+            cc::cell_class& cell = cc::CellList[c];
+            const double r = std::hypot(cell.center.x,cell.center.y);
+            if(r > 0.5 && r < 3.0){
+                // 绕 x 轴的涡量团: u 奇 y 偶, 正是带升力的脱涡模态, 且无散
+                const double w = amp*std::exp(-r*r/4.0);
+                cell.phy.u += -w*cell.center.y;
+                cell.phy.v += w*cell.center.x;
+                cell.form_conservative();
+            }
+        }
+        refresh_field();
+    }
     const bool ok14 = check_14_run(dt,subiter,steps);
     check_end(ok14,g_info);
     check_begin(15,"输出流场(供 python 画云图)");
