@@ -4,7 +4,6 @@
 #include "config.hpp"
 #include "physic.hpp"
 #include "udf.hpp"
-#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -14,7 +13,6 @@
 #include <nlohmann/json.hpp>
 #include <set>
 #include <string>
-#include <sys/stat.h>
 #include <system_error>
 #include <vector>
 
@@ -29,16 +27,9 @@ static bool make_dirs(const std::string& path){
     if(path.empty()){
         return true;
     }
-    for(size_t i=1;i<path.size();i++){
-        if(path[i] != '/'){
-            continue;
-        }
-        std::string sub = path.substr(0,i);
-        if(mkdir(sub.c_str(),0755) != 0 && errno != EEXIST){
-            return false;
-        }
-    }
-    return mkdir(path.c_str(),0755) == 0 || errno == EEXIST;
+    std::error_code error;
+    std::filesystem::create_directories(path,error);
+    return !error;
 }
 
 inline bool open_log(const char* path){

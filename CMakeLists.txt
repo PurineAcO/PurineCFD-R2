@@ -10,9 +10,14 @@ target_include_directories(purinecfd SYSTEM PRIVATE third_party)
 target_link_libraries(purinecfd PRIVATE OpenMP::OpenMP_CXX)
 # Flow validity is checked explicitly; the solver does not inspect libm errno.
 # Unused parameters/variables stay warnings: some kernels are still being written.
-target_compile_options(purinecfd PRIVATE -Wall -Wextra -Wpedantic -Werror
-                       -Wno-error=unused-parameter -Wno-error=unused-variable
-                       -fno-math-errno)
+if(MSVC)
+  # 源码含中文注释, 按 UTF-8 读取
+  set(PURINE_WARNINGS /W3 /utf-8)
+else()
+  set(PURINE_WARNINGS -Wall -Wextra -Wpedantic -Werror
+      -Wno-error=unused-parameter -Wno-error=unused-variable -fno-math-errno)
+endif()
+target_compile_options(purinecfd PRIVATE ${PURINE_WARNINGS})
 
 # 单步调试用的小程序: 直接 include src 下的头文件, 因此需要把 src 加进搜索路径
 add_executable(debug tests/debug.cpp)
@@ -20,13 +25,14 @@ target_compile_features(debug PRIVATE cxx_std_17)
 target_include_directories(debug PRIVATE src)
 target_include_directories(debug SYSTEM PRIVATE third_party)
 target_link_libraries(debug PRIVATE OpenMP::OpenMP_CXX)
-target_compile_options(debug PRIVATE -g -O0 -Wall -Wextra -Wpedantic -Werror
-                       -Wno-error=unused-parameter -Wno-error=unused-variable
-                       -fno-math-errno)
+target_compile_options(debug PRIVATE ${PURINE_WARNINGS})
+if(NOT MSVC)
+  target_compile_options(debug PRIVATE -g -O0)
+endif()
 
 option(PURINE_NATIVE "Optimize for the build machine" OFF)
 option(PURINE_SANITIZE "Enable AddressSanitizer and UBSan" OFF)
-if(PURINE_NATIVE)
+if(PURINE_NATIVE AND NOT MSVC)
   target_compile_options(purinecfd PRIVATE -march=native)
 endif()
 if(PURINE_SANITIZE)

@@ -4,7 +4,7 @@
 
 ## 构建与运行
 
-依赖 Linux、GCC（C++17/OpenMP）、CMake ≥3.16、Python ≥3.10。nlohmann/json 3.11.3 随源码提供。
+依赖 C++17 编译器与 OpenMP（Linux 用 GCC；Windows 推荐 MSYS2 的 MinGW-w64 GCC）、CMake ≥3.16、Python ≥3.10。nlohmann/json 3.11.3 随源码提供。
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPURINE_NATIVE=ON -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON

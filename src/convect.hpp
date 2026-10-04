@@ -4,7 +4,6 @@
 #include "config.hpp"
 #include "dissipation.hpp"
 #include <cmath>
-#include <linux/stat.h>
 
 /*
 Roe 通量对方向是有要求的,也就是说必须保证面上的法向量是L→R,本代码中要求L→R是face.nei[0]→[1]
