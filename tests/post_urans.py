@@ -99,7 +99,7 @@ p_inf, q_inf = far['p'], 0.5 * GAMMA * far['p'] * far['Ma'] ** 2
 def load(fn):
   f = np.loadtxt(fn, skiprows=2)
   # 行为径向层(第0行贴壁), 列为周向
-  a = {k: f[:, i].reshape(-1, S) for i, k in enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma'])}
+  a = {k: f[:, i].reshape(-1, S) for i, k in enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])}
   a['Cp'] = (a['p'] - p_inf) / q_inf
 
   # 周向(列)用周期中心差分, 径向(行)用 np.gradient
@@ -116,6 +116,9 @@ def load(fn):
   gy = (dn(r) * ds(x) - ds(r) * dn(x)) / jac
   grad = np.hypot(gx, gy)
   a['schlieren'] = np.exp(-15 * grad / np.percentile(grad, 99.5))
+  vx = (ds(a['v']) * dn(y) - dn(a['v']) * ds(y)) / jac
+  uy = (dn(a['u']) * ds(x) - ds(a['u']) * dn(x)) / jac
+  a['vorticity'] = (vx - uy) / (far['Ma'] * np.sqrt(GAMMA * 287.05 * far['T']))
   # 末尾补第一列使周向闭合
   return {k: np.hstack([v, v[:, :1]]) for k, v in a.items()}
 
@@ -128,38 +131,60 @@ def label(fn):
 
 
 def body(ax, a, view):
-  ax.fill(a['x'][0], a['y'][0], color='0.5', zorder=5)
+  ax.fill(a['x'][0], a['y'][0], color='w', edgecolor='k', linewidth=0.8, zorder=5)
   ax.set_xlim(view[0], view[1])
   ax.set_ylim(view[2], view[3])
   ax.set_aspect('equal')
 
 
-view = (-0.7, 0.8, -0.35, 0.55) if args.airfoil else (-1.5, 4.0, -1.5, 1.5)
+view = (-0.7, 0.8, -0.35, 0.55) if args.airfoil else (-5.0, 15.0, -10.0, 10.0)
 cp_star = (
   2
   / (GAMMA * far['Ma'] ** 2)
   * (((2 + (GAMMA - 1) * far['Ma'] ** 2) / (GAMMA + 1)) ** (GAMMA / (GAMMA - 1)) - 1)
 )
 a = load(files[-1])
-fig, axs = plt.subplots(3, 1, figsize=(10, 15))
-c = axs[0].contourf(a['x'], a['y'], a['Ma'], levels=60, cmap='jet')
-if a['Ma'].max() > 1:
-  axs[0].contour(a['x'], a['y'], a['Ma'], levels=[1.0], colors='k', linewidths=0.8)
-fig.colorbar(c, ax=axs[0], label='Ma')
-c = axs[1].contourf(
-  a['x'], a['y'], a['Cp'], levels=np.linspace(-1.6, 1.1, 55), cmap='jet', extend='both'
-)
-if a['Ma'].max() > 1:
-  axs[1].contour(a['x'], a['y'], a['Cp'], levels=[cp_star], colors='w', linewidths=0.8)
-fig.colorbar(c, ax=axs[1], label='Cp')
-axs[2].pcolormesh(a['x'], a['y'], a['schlieren'], cmap='gray', shading='gouraud', vmin=0, vmax=1)
-axs[2].set_title('numerical schlieren')
-for ax in axs:
+
+
+def panel(z, name, levels, cmap, extend, bar):
+  fig, ax = plt.subplots(figsize=(8.2, 7.0))
+  c = ax.contourf(a['x'], a['y'], z, levels=levels, cmap=cmap, extend=extend, antialiased=False)
+  if cmap != 'gray':
+    ax.contour(a['x'], a['y'], z, levels=levels[1::2], colors='k', linewidths=0.45, alpha=0.7)
   body(ax, a, view)
-axs[0].set_title(label(files[-1]))
-fig.tight_layout()
-fig.savefig(os.path.join(out, 'contours.png'), dpi=120)
-plt.close(fig)
+  ax.set_xlabel('$x/c$' if args.airfoil else '$x/D$', fontsize=14)
+  ax.set_ylabel('$y/c$' if args.airfoil else '$y/D$', fontsize=14)
+  ax.tick_params(direction='in', top=True, right=True, labelsize=11)
+  ax.set_title(label(files[-1]), fontsize=12)
+  cb = fig.colorbar(c, ax=ax, orientation='horizontal', fraction=0.05, pad=0.12)
+  cb.ax.tick_params(labelsize=10)
+  cb.ax.set_title(bar, fontsize=11, pad=8)
+  fig.tight_layout()
+  fig.savefig(os.path.join(out, name), dpi=150)
+  plt.close(fig)
+  print('写出', os.path.join(out, name))
+
+
+U_inf = far['Ma'] * np.sqrt(GAMMA * 287.05 * far['T'])
+specs = [
+    ('u', 'RdBu_r', -1.2 * U_inf, 1.2 * U_inf, r'$u$ [m/s]'),
+    ('v', 'RdBu_r', -0.6 * U_inf, 0.6 * U_inf, r'$v$ [m/s]'),
+    ('rho', 'jet', None, None, r'$\rho$ [kg/m$^3$]'),
+    ('miubl', 'jet', 0.0, None, r'$\tilde\nu$ [m$^2$/s]'),
+    ('T', 'jet', None, None, r'$T$ [K]'),
+    ('Ma', 'jet', None, None, 'Ma'),
+    ('Cp', 'jet', -1.6, 1.1, 'Cp'),
+    ('schlieren', 'gray', 0.0, 1.0, 'schlieren'),
+    ('vorticity', 'jet', -4.0, 4.0, r'$\omega D/U$'),
+]
+for key, cmap, lo, hi, bar in specs:
+    z = a[key]
+    if lo is None:
+        lo = float(np.floor(z.min() * 20) / 20)
+    if hi is None:
+        hi = float(np.ceil(z.max() * 20) / 20)
+    panel(z, ('T' if key == 'T' else key.lower()) + '.png', np.linspace(lo, hi, 21), cmap,
+          'neither' if cmap == 'gray' else 'both', bar)
 
 # 最后 6 帧的纹影与壁面 -Cp
 seq = files[-6:]

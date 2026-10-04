@@ -9,3 +9,10 @@ __pycache__/
 cases/*.txt
 debugres/
 debugres_roe/
+
+# 求解器/后处理生成物（不应进 git）
+/debug/
+.cache/
+*.log
+*.csv
+*.dat
