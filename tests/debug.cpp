@@ -18,13 +18,12 @@
 #include "udf.hpp"
 
 #include <algorithm>
-#include <cerrno>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
 
 #ifdef _OPENMP
@@ -1890,7 +1889,9 @@ int main(int argc,char** argv){
            g_laminar ? "/层流(湍流模型已冻结)" : "");
     printf("步=%d  子迭代=%d  物理时间步 dt=%.3e s  OpenMP线程=%d  中间输出间隔=%d  格式=%s\n",
            steps,subiter,dt,nthreads,g_dump_every,cc::scheme == 'J' ? "JST" : "Roe");
-    if(mkdir(OUTDIR,0755) != 0 && errno != EEXIST){
+    std::error_code mkdir_error;
+    std::filesystem::create_directories(OUTDIR,mkdir_error);
+    if(mkdir_error){
         fprintf(stderr,"Error: cannot create %s\n",OUTDIR);
         return 1;
     }
