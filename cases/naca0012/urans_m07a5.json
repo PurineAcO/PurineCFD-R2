@@ -1,0 +1,30 @@
+{
+  "io": {
+    "mesh": "naca0012_sa.txt",
+    "structured": "naca0012_sa_struct.txt",
+    "log": "../../run/naca0012/run.log",
+    "field": "../../run/naca0012"
+  },
+  "solver": {
+    "max_steps": 3000,
+    "cfl": 100.0,
+    "dump_interval": 250,
+    "convergence_interval": 10,
+    "threads": 8,
+    "urans": {
+      "dt": 2.0e-4,
+      "inner": 40,
+      "inner_tol": 1e-3,
+      "sweeps": 4,
+      "steady_iters": 1500,
+      "steady_cfl": 50.0,
+      "wall_interval": 5
+    }
+  },
+  "farfield": {
+    "Ma": 0.7,
+    "T": 300.0,
+    "p": 65401.745362381196,
+    "alpha": 5.0
+  }
+}

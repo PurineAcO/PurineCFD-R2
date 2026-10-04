@@ -1,6 +1,6 @@
 # PurineCFD-R2
 
-目前可用的版本是:`2df3d8a719370966b97865e7f283ae104a25fbf9`,代码2.2.5
+代码版本 2.3.0
 
 ## 构建与运行
 
@@ -30,6 +30,7 @@ python3 cases/cylinder/generate_case.py
 | 5 | [interpolate.hpp](src/interpolate.hpp)、[grad.hpp](src/grad.hpp)、[convect.hpp](src/convect.hpp) | 如何由面值求梯度，并汇总穿过单元边界的通量？ |
 | 6 | [dissipation.hpp](src/dissipation.hpp)、[SA.hpp](src/SA.hpp) | 人工耗散和湍流模型分别加入哪些项？ |
 | 7 | [timarch.hpp](src/timarch.hpp)、[residual.hpp](src/residual.hpp)、[io.hpp](src/io.hpp) | 时间步怎样确定？何时停止？结果怎样输出？ |
+| 8 | [dualtime.hpp](src/dualtime.hpp) | URANS 双时间步：外迭代怎样推进物理时间？内迭代的隐式方程怎样组装和求解？ |
 
 配置解析和线程设置分别在 `config.hpp`、`parallel.hpp`；边界条件参数在 `udf.hpp`。
 
@@ -81,3 +82,40 @@ PURINECFD_BIN="$PWD/build/purinecfd" uv run pytest -q
 ```
 
 构建启用严格编译警告。`-DPURINE_SANITIZE=ON` 启用 ASan/UBSan。测试覆盖数值回归、线程一致性、输入校验和错误报告。
+
+## URANS（双时间步）
+
+`./build/purinecfd <配置>` 运行 URANS，算法在 [dualtime.hpp](src/dualtime.hpp)，与 Fluent 密度基隐式求解器的做法一致：
+
+- 外迭代：物理时间用一阶后向欧拉（BDF1），`V(Qⁿ⁺¹−Qⁿ)/Δt + R(Qⁿ⁺¹) = 0`。
+- 内迭代：伪时间隐式推进，每步解 `[V/Δτ + V/Δt + ∂R/∂Q]ΔQ = −[R(Qᵏ) + V(Qᵏ−Qⁿ)/Δt]`。∂R/∂Q 取一阶 Rusanov 通量的近似 Jacobian（对角为标量，不存矩阵），用对称 Gauss-Seidel 扫描求解；OpenMP 下按单元编号分块，结果与线程调度无关。
+- SA 方程在流动方程之后单独求解，同样 BDF1 + 隐式伪时间；对流一阶迎风，破坏项进对角。
+- 残差 R 复用现有的 Roe + MUSCL + 最小二乘梯度 + SA 黏性通量。
+
+配置在 `solver` 下增加 `urans` 一节，`max_steps` 为物理时间步数，`cfl` 为内迭代伪时间 CFL，`convergence_interval` 为屏幕输出间隔：
+
+| 键 | 含义 | 默认 |
+| --- | --- | --- |
+| `dt` | 物理时间步长（s），必填 | — |
+| `inner` | 每个物理步最多内迭代次数，必填 | — |
+| `inner_tol` | 连续方程残差相对首次内迭代降到该值即结束内迭代 | 1e-3 |
+| `sweeps` | 每次内迭代的对称 GS 扫描次数 | 4 |
+| `steady_iters` | URANS 前的定常隐式迭代次数（Δt→∞），用来给初场 | 0 |
+| `steady_cfl` | 定常迭代的 CFL 终值（前 200 步从 2 线性增大） | 50 |
+| `wall_interval` | 壁面 Cp 输出间隔，0 不输出 | 0 |
+| `seed` | 初场反对称涡扰动幅值（相对 U∞），对称问题起振用 | 0 |
+
+`io.field` 目录下输出 `history.csv`（每步 Cl、Cd、内迭代次数与残差）、`wall_cp.dat`、`step_*.dat`。后处理：
+
+```sh
+uv run --with matplotlib --with numpy python tests/post_urans.py cases/naca0012/urans_m07a5.json --airfoil
+```
+
+给出主频、激波位置统计、力系数历程和马赫数 / Cp / 数值纹影云图。
+
+| 算例 | 设置 | 结果 |
+| --- | --- | --- |
+| [圆柱](config.json) Re=1000 Ma=0.2 | Δt=1.5e-3 s，800 步，内迭代 20 | St≈0.19，Cd≈1.09，Cl≈±0.51 |
+| [NACA0012](cases/naca0012/urans_m07a5.json) Ma=0.7 α=5° Re=1e7 | 定常 1500 步后 Δt=2e-4 s，3000 步，内迭代 40 | 激波自激振荡（抖振）：Cl 0.53–0.66，上表面激波 x/c 0.25–0.31，13.3 Hz（k≈0.17） |
+
+NACA0012 每个物理步建议内迭代不少于 40 次（内迭代残差下降约两个量级），此时激波振荡自持，内迭代加到 80 次后振荡频率与幅值基本不变。

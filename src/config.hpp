@@ -143,6 +143,18 @@ namespace config {
     inline int conv_step = 1;   // 残差检查间隔
 }
 
+// URANS双时间步参数, 对应config.json中的solver.urans
+namespace urans {
+    inline double dt = 0.0;          // 物理时间步长, s
+    inline int inner = 20;           // 每个物理时间步的最大内迭代次数
+    inline double inner_tol = 1e-3;  // 内迭代残差相对首次内迭代的下降目标
+    inline int sweeps = 4;           // 每次内迭代的对称Gauss-Seidel扫描次数
+    inline int steady_iters = 0;     // URANS之前的定常隐式迭代次数, 用来给初场
+    inline double steady_cfl = 50.0; // 定常迭代的CFL终值(从2线性增大到该值)
+    inline int wall_interval = 0;    // 壁面Cp输出间隔, 0表示不输出
+    inline double seed = 0.0;        // 初场反对称涡扰动幅值(相对U∞), 对称问题起振用
+}
+
 // 结构化网格参数
 namespace structer{
     inline bool ifstructer = false; // 结构化网格令牌

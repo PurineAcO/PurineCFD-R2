@@ -6,10 +6,15 @@
     "field": "run/field"
   },
   "solver": {
-    "max_steps": 50000,
-    "cfl": 1.0,
-    "dump_interval": 2000,
-    "convergence_interval": 200
+    "max_steps": 800,
+    "cfl": 100.0,
+    "dump_interval": 200,
+    "convergence_interval": 10,
+    "urans": {
+      "dt": 1.5e-3,
+      "inner": 20,
+      "seed": 0.02
+    }
   },
   "farfield": {
     "Ma": 0.2,
