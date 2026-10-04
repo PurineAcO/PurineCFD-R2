@@ -3,6 +3,7 @@
 输出 (都在 debugres/ 下): mach.png  cp.png  flow.png  profile.png  convergence.png
 用法: python3 cases/naca0012/plot_all.py [debugres]
 """
+
 import json
 import math
 import sys
@@ -49,8 +50,9 @@ def read_nodes(path):
 
 def latest_field():
   def key(p):
-    tag = p.stem[len('field_'):]
+    tag = p.stem[len('field_') :]
     return (0, int(tag)) if tag.isdigit() else (1, 0)
+
   files = sorted(OUT.glob('field_*.dat'), key=key)
   if not files:
     raise SystemExit(f'{OUT} 下没有 field_*.dat')
@@ -120,8 +122,9 @@ def draw(ax, x, y, values, levels, cmap):
   clipped = np.clip(values, levels[0], levels[-1])
   filled = ax.contourf(x, y, clipped, levels=levels, cmap=cmap, norm=norm, extend='neither')
   ax.contour(x, y, clipped, levels=levels, colors='k', linewidths=0.6, linestyles='solid')
-  bar = plt.colorbar(filled, ax=ax, ticks=levels, fraction=0.055, pad=0.03,
-                     drawedges=False, format='%g')
+  bar = plt.colorbar(
+    filled, ax=ax, ticks=levels, fraction=0.055, pad=0.03, drawedges=False, format='%g'
+  )
   bar.ax.tick_params(length=0, labelsize=12)
   bar.outline.set_linewidth(1.0)
   return bar
@@ -179,7 +182,9 @@ def main():
   js = np.where(sup.any(axis=0))[0]
   rows = np.where(sup.any(axis=1))[0]
   if len(js) and len(rows):
-    print(f'超声速区 x/c = {xc[js].min():.4f} ~ {xc[js].max():.4f}, 径向层 i = {rows.min()} ~ {rows.max()}')
+    print(
+      f'超声速区 x/c = {xc[js].min():.4f} ~ {xc[js].max():.4f}, 径向层 i = {rows.min()} ~ {rows.max()}'
+    )
   drop = np.diff(cp_wall)
   print(f'上表面 Cp 最陡下降(x/c) = {xc[np.argmin(drop)]:.4f}')
   print(f'密度范围 {rho.min():.6f} ~ {rho.max():.6f}, 温度 {T.min():.3f} ~ {T.max():.3f} K')
@@ -188,8 +193,10 @@ def main():
   print('--- 壁面 ---')
   print(f'首层离壁 min {distance.min():.3e}  max {distance.max():.3e}')
   print(f'u_tau min {utau.min():.3f}  max {utau.max():.3f}  mean {utau.mean():.3f} m/s')
-  print(f'y+    min {yplus.min():.3f}  max {yplus.max():.3f}  mean {yplus.mean():.3f}'
-        f'  中位 {np.median(yplus):.3f}')
+  print(
+    f'y+    min {yplus.min():.3f}  max {yplus.max():.3f}  mean {yplus.mean():.3f}'
+    f'  中位 {np.median(yplus):.3f}'
+  )
   print(f'Cf    min {cf.min():.5f}  max {cf.max():.5f}')
   print()
   print(f'--- 力系数 (力矩参考点 x/c={X_REF:.2f}) ---')
@@ -219,8 +226,7 @@ def main():
   # ---- mach.png ----
   figure, ax = plt.subplots(figsize=(8.4, 7.8))
   levels = np.round(np.arange(0.0, 1.41, 0.1), 2)
-  bar = draw(ax, wrap_cx, wrap_cy, wrapped(ma), levels,
-             plt.get_cmap('jet_r', len(levels) - 1))
+  bar = draw(ax, wrap_cx, wrap_cy, wrapped(ma), levels, plt.get_cmap('jet_r', len(levels) - 1))
   bar.ax.set_title('Mach', fontsize=14, pad=8)
   ax.set_xlabel('$x/c$', fontsize=16)
   ax.set_ylabel('$y/c$', fontsize=16)
@@ -292,8 +298,8 @@ def main():
   j = int(mask.argmin())
   for row in (0, 1, 2, 3, 5, 8, 12, 16, 22, 30):
     k = row * NCIR
-    dr = wall_distance(field[k:k + NCIR, :2], nodes)[j]
-    ut = (field[k + j, 3] * tangent[j, 0] + field[k + j, 4] * tangent[j, 1])
+    dr = wall_distance(field[k : k + NCIR, :2], nodes)[j]
+    ut = field[k + j, 3] * tangent[j, 0] + field[k + j, 4] * tangent[j, 1]
     yp = field[k + j, 2] * abs(utau[j]) * dr / sutherland(field[k + j, 5])
     axes[1].plot(yp, abs(ut) / abs(utau[j]), 'o', ms=5, label=f'row {row}')
   law = np.logspace(0, 2.7, 100)

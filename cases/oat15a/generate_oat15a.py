@@ -20,7 +20,9 @@ parser.add_argument('--shock-dx', type=float, default=0.0015, help='激波处弦
 parser.add_argument('--shock-width', type=float, default=0.13, help='激波加密窗口半宽')
 parser.add_argument('--center-x', type=float, default=0.0, help='远场圆心 x (弦中点坐标)')
 parser.add_argument('--center-y', type=float, default=0.0, help='远场圆心 y (弦中点坐标)')
-parser.add_argument('--bulge', type=float, default=0.08, help='法向控制点允许造成的最大横向偏离(弦长)')
+parser.add_argument(
+  '--bulge', type=float, default=0.08, help='法向控制点允许造成的最大横向偏离(弦长)'
+)
 parser.add_argument('--dense', type=int, default=400, help='每条径向线的密集采样点数')
 args = parser.parse_args()
 if args.first_height <= 0.0 or args.growth <= 1.0:
@@ -283,14 +285,19 @@ for i in range(nrad - 1):
       worst = (value, i, j)
 
 positive = sum(1 for value in signs if value > 0.0)
-direction = [unit((radial[1][j][0] - wall[j][0], radial[1][j][1] - wall[j][1])) for j in range(ncir)]
+direction = [
+  unit((radial[1][j][0] - wall[j][0], radial[1][j][1] - wall[j][1])) for j in range(ncir)
+]
 orth = [
   math.degrees(
-    math.acos(max(-1.0, min(1.0, abs(wall_nrm[j][0] * direction[j][0] + wall_nrm[j][1] * direction[j][1]))))
+    math.acos(
+      max(-1.0, min(1.0, abs(wall_nrm[j][0] * direction[j][0] + wall_nrm[j][1] * direction[j][1])))
+    )
   )
   for j in range(ncir)
 ]
 orth = [min(a, 180.0 - a) for a in orth]
+
 
 # --- 输出 ---
 def node(i, j):
@@ -376,13 +383,21 @@ wall_x = [wall[j][0] + 0.5 for j in range(ncir)]
 wall_y = [wall[j][1] for j in range(ncir)]
 print(f'{args.target}: nodes={len(nodes)} faces={face_count} cells={len(cells)}')
 print(f'  WALL={len(wall_group)} FAR={len(far_group)} INTER={len(interior)}')
-print(f'  原始轮廓 {n} 点 (弦长 {chord_raw:.4f}) -> 周向 {ncir} 点'
-      f'{", 输入顺序已反转" if reversed_input else ""}')
+print(
+  f'  原始轮廓 {n} 点 (弦长 {chord_raw:.4f}) -> 周向 {ncir} 点'
+  f'{", 输入顺序已反转" if reversed_input else ""}'
+)
 print(f'  激波 x/c={args.shock_xc:.3f} 处加密 {refine:.2f} 倍, 目标间距 {args.shock_dx:.5f}')
-print(f'  径向 {ncell} 层, 首层 {offsets[1] / offsets[-1] * min(line_length):.3e}'
-      f' ~ {offsets[1] / offsets[-1] * max(line_length):.3e}, 远场半径 {radius:.3f}')
-print(f'  壁面 y/c {min(wall_y):.5f} ~ {max(wall_y):.5f}, x/c {min(wall_x):.5f} ~ {max(wall_x):.5f}')
-print(f'  拐向为正的单元 {positive} / {len(signs)}, 单元面积范围 {min(signs):.3e} ~ {max(signs):.3e}')
+print(
+  f'  径向 {ncell} 层, 首层 {offsets[1] / offsets[-1] * min(line_length):.3e}'
+  f' ~ {offsets[1] / offsets[-1] * max(line_length):.3e}, 远场半径 {radius:.3f}'
+)
+print(
+  f'  壁面 y/c {min(wall_y):.5f} ~ {max(wall_y):.5f}, x/c {min(wall_x):.5f} ~ {max(wall_x):.5f}'
+)
+print(
+  f'  拐向为正的单元 {positive} / {len(signs)}, 单元面积范围 {min(signs):.3e} ~ {max(signs):.3e}'
+)
 print(f'  质量最差单元 (i={worst[1]}, j={worst[2]}) 面积 {worst[0]:.3e}')
 print(f'  壁面正交偏差: 中位 {sorted(orth)[ncir // 2]:.2f}° 最大 {max(orth):.2f}°')
 print(f'  远场角跨度 {math.degrees(phi[-1] - phi[0]):.3f}°, 相对壁面几何角最大扭转 {twist:.3f}°')
