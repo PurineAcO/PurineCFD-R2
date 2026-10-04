@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(PurineCFD_R2 LANGUAGES CXX)
+project(PurineCFD_R2 VERSION 2.3.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

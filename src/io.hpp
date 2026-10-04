@@ -213,7 +213,7 @@ inline bool config::load(const char* path){
     const Json& far = root.at("farfield");
     // 各节的键白名单; io 的 structured 只在网格带结构化信息时出现
     if(!keys(io,{"mesh","log","field"},{"structured"}) ||
-       !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"},{"threads"}) ||
+       !keys(solver,{"max_steps","cfl","dump_interval","convergence_interval"},{"threads","urans"}) ||
        !keys(far,{"Ma","T","p","alpha"})){
         return false;
     }
@@ -257,6 +257,22 @@ inline bool config::load(const char* path){
     if(solver.contains("threads") && !count(solver,"threads",threads)){
         return false;
     }
+    // URANS参数, 缺省项保持config.hpp中的默认值
+    double u_dt = 0.0,u_tol = urans::inner_tol,u_cfl = urans::steady_cfl,u_seed = urans::seed;
+    int u_inner = urans::inner,u_sweeps = urans::sweeps,u_steady = urans::steady_iters,u_wall = urans::wall_interval;
+    if(solver.contains("urans")){
+        const Json& u = solver.at("urans");
+        if(!keys(u,{"dt","inner"},{"inner_tol","sweeps","steady_iters","steady_cfl","wall_interval","seed"}) ||
+           !positive(u,"dt",u_dt) || !count(u,"inner",u_inner) ||
+           (u.contains("inner_tol") && !positive(u,"inner_tol",u_tol)) ||
+           (u.contains("sweeps") && !count(u,"sweeps",u_sweeps)) ||
+           (u.contains("steady_iters") && !count(u,"steady_iters",u_steady)) ||
+           (u.contains("steady_cfl") && !positive(u,"steady_cfl",u_cfl)) ||
+           (u.contains("wall_interval") && !count(u,"wall_interval",u_wall)) ||
+           (u.contains("seed") && !number(u,"seed",u_seed))){
+            return false;
+        }
+    }
     // 来流条件
     double cfl = 0.0,ma = 0.0,T = 0.0,p = 0.0,alpha = 0.0;
     if(!positive(solver,"cfl",cfl) || !positive(far,"Ma",ma) ||
@@ -289,5 +305,13 @@ inline bool config::load(const char* path){
     FAR_DEFINE.v = u_inf*std::sin(rad);
     FAR_DEFINE.T = T;
     FAR_DEFINE.p = p;
+    urans::dt = u_dt;
+    urans::inner = u_inner;
+    urans::inner_tol = u_tol;
+    urans::sweeps = u_sweeps;
+    urans::steady_iters = u_steady;
+    urans::steady_cfl = u_cfl;
+    urans::wall_interval = u_wall;
+    urans::seed = u_seed;
     return true;
 }
