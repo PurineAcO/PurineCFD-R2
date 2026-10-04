@@ -89,7 +89,9 @@ print(f'  壁面首层高度 {height.min():.3e} ~ {height.max():.3e} (弦长单�
 print(f'  周向间距 {width.min():.5f} ~ {width.max():.5f}')
 upper = grid[0, :, 1] > 0.0
 fine = width < 0.0016
-print(f'  Δx<0.0016 的 x/c 区间 {xc[fine].min():.4f} ~ {xc[fine].max():.4f}, '
-      f'{int(fine.sum())} 个点 (上表面 {int((fine & upper).sum())}, 下表面 {int((fine & ~upper).sum())})')
+print(
+  f'  Δx<0.0016 的 x/c 区间 {xc[fine].min():.4f} ~ {xc[fine].max():.4f}, '
+  f'{int(fine.sum())} 个点 (上表面 {int((fine & upper).sum())}, 下表面 {int((fine & ~upper).sum())})'
+)
 print(f'  上表面激波加密段 Δx: {width[fine & upper].min():.5f} ~ {width[fine & upper].max():.5f}')
 print(f'  输出 {prefix}_overview.png, {prefix}_detail.png')

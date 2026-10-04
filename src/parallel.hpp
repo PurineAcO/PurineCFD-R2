@@ -18,52 +18,44 @@ namespace parallel {
 const char* configure_threads();
 } // namespace parallel
 
-static int physical_cores(){
+static int physical_cores() {
     const int capacity = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
-    if(capacity <= 0){
-        return 0;
-    }
+    if (capacity <= 0) { return 0; }
     cpu_set_t* mask = CPU_ALLOC(capacity);
-    if(mask == nullptr){
-        return 0;
-    }
+    if (mask == nullptr) { return 0; }
     const size_t bytes = CPU_ALLOC_SIZE(capacity);
-    if(sched_getaffinity(0,bytes,mask) != 0){
+    if (sched_getaffinity(0, bytes, mask) != 0) {
         CPU_FREE(mask);
         return 0;
     }
-    std::set<std::pair<int,int>> cores;
-    for(int cpu=0;cpu<capacity;cpu++){
-        if(!CPU_ISSET_S(cpu,bytes,mask)){
-            continue;
-        }
+    std::set<std::pair<int, int>> cores;
+    for (int cpu = 0; cpu < capacity; cpu++) {
+        if (!CPU_ISSET_S(cpu, bytes, mask)) { continue; }
         const std::string base = "/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/topology/";
-        int socket = -1,core = -1;
+        int socket = -1, core = -1;
         std::ifstream socket_file(base + "physical_package_id");
         std::ifstream core_file(base + "core_id");
-        if(!(socket_file >> socket) || !(core_file >> core) || socket < 0 || core < 0){
+        if (!(socket_file >> socket) || !(core_file >> core) || socket < 0 || core < 0) {
             CPU_FREE(mask);
             return 0;
         }
-        cores.emplace(socket,core);
+        cores.emplace(socket, core);
     }
     CPU_FREE(mask);
     return static_cast<int>(cores.size());
 }
 
-inline const char* parallel::configure_threads(){
+inline const char* parallel::configure_threads() {
     omp_set_dynamic(0);
-    if(const char* requested = getenv("OMP_NUM_THREADS"); requested && *requested){
+    if (const char* requested = getenv("OMP_NUM_THREADS"); requested && *requested) {
         return "OMP_NUM_THREADS";
     }
-    if(cc::threads > 0){
-        omp_set_num_threads(std::min(cc::threads,omp_get_thread_limit()));
+    if (cc::threads > 0) {
+        omp_set_num_threads(std::min(cc::threads, omp_get_thread_limit()));
         return "config.json";
     }
     int cores = physical_cores();
-    if(cores <= 0){
-        cores = omp_get_num_procs();
-    }
-    omp_set_num_threads(std::min(cores,omp_get_thread_limit()));
+    if (cores <= 0) { cores = omp_get_num_procs(); }
+    omp_set_num_threads(std::min(cores, omp_get_thread_limit()));
     return "available-physical-cores";
 }
