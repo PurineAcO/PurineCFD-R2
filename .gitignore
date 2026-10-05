@@ -16,3 +16,7 @@ debugres_roe/
 *.log
 *.csv
 *.dat
+
+# Fluent 网格
+*.cas
+readrans.txt
