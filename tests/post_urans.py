@@ -39,17 +39,37 @@ h = np.genfromtxt(
 )
 u = h[h['phase'] == 'U']
 t, cl, cd = u['time'], u['Cl'], u['Cd']
+def peak_freq(y, dt):
+  """Hann 窗 + 补零定位峰, 再按原始分辨率 df 做抛物线插值, 避免主频被钉在 bin 上
+
+  返回 (峰值频率, 分辨率).
+  """
+  y = np.asarray(y, float) - np.mean(y)
+  n = len(y)
+  df = 1.0 / (n * dt)
+  N = 1 << int(np.ceil(np.log2(n * 16)))
+  mag = np.abs(np.fft.rfft(y * np.hanning(n), N))
+  fr = np.fft.rfftfreq(N, dt)
+  k = int(np.argmax(mag[1:])) + 1
+  f0 = fr[k]
+
+  def at(f):
+    return mag[int(np.argmin(np.abs(fr - f)))]
+
+  a, b, c = np.log(at(f0 - df)), np.log(at(f0)), np.log(at(f0 + df))
+  return f0 + 0.5 * (a - c) / (a - 2 * b + c) * df, df
+
+
 half = len(t) // 2
 s = cl[half:] - cl[half:].mean()
-freq = np.fft.rfftfreq(len(s), t[1] - t[0])
-amp = np.abs(np.fft.rfft(s * np.hanning(len(s))))
-f0 = freq[np.argmax(amp[1:]) + 1]
+f0, df = peak_freq(cl[half:], t[1] - t[0])
 lines = [
   f'物理步数 {len(t)}, t_end = {t[-1]:.4f} s, 平均内迭代 {u["inner"].mean():.1f} 次, '
   f'内迭代残差下降中位数 {np.median(u["res"] / u["res0"]):.2e}',
   f'后半段 Cl: 均值 {cl[half:].mean():.4f}, 范围 [{cl[half:].min():.4f}, {cl[half:].max():.4f}]',
   f'后半段 Cd: 均值 {cd[half:].mean():.4f}, 范围 [{cd[half:].min():.4f}, {cd[half:].max():.4f}]',
-  f'Cl 主频 {f0:.3f} Hz, St = fL/U = {f0 / U:.4f}, k = pi f L/U = {math.pi * f0 / U:.4f}',
+  f'Cl 主频 {f0:.2f} Hz (分辨率 {df:.2f} Hz), St = fL/U = {f0 / U:.4f}, '
+  f'k = pi f L/U = {math.pi * f0 / U:.4f}',
 ]
 
 # ---------------- 激波位置: 上表面 dCp/dx 最大处 ----------------
@@ -65,9 +85,12 @@ if args.airfoil:
     shock_t.append(float(rows[0].split()[2]))
     shock_x.append(x[np.argmax(g)] + 0.5)
   sx = np.array(shock_x)[len(shock_x) // 2 :]
+  fs, _ = peak_freq(np.array(shock_x)[len(shock_x) // 2 :], shock_t[1] - shock_t[0])
   lines.append(
     f'后半段上表面激波位置 x/c: 均值 {sx.mean():.3f}, 范围 [{sx.min():.3f}, {sx.max():.3f}]'
   )
+  lines.append(f'激波位置主频 {fs:.2f} Hz (激波序列 FFT, 与 Cl 一致)')
+
 
 text = '\n'.join(lines)
 print(text)

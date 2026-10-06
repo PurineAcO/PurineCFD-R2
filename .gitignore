@@ -17,6 +17,10 @@ debugres_roe/
 *.csv
 *.dat
 
+# 结果流水线的临时配置
+_run_*.json
+_sweep.json
+
 # Fluent 网格
 *.cas
 readrans.txt

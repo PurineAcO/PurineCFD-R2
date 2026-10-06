@@ -2,6 +2,7 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "dualtime.hpp"
+#include "dualtime_full.hpp"
 #include "geometry.hpp"
 #include "initialize.hpp"
 #include "io.hpp"
@@ -11,6 +12,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+
+#ifdef PURINE_JAC_FULL
+inline double flow_step_select(double dt,double cfl){ return dual_full::flow_step(dt,cfl); }
+#else
+inline double flow_step_select(double dt,double cfl){ return dual::flow_step(dt,cfl); }
+#endif
 
 // 来流动压
 static double dynamic_pressure() {
@@ -111,7 +118,7 @@ int main(int argc, char** argv) {
     for (int it = 1; it <= urans::steady_iters; it++) {
         const double cfl =
             std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0);
-        const double r = dual::flow_step(0.0, cfl);
+        const double r = flow_step_select(0.0, cfl);
         dual::sa_step(0.0, cfl);
         if (it % config::conv_step == 0 || it == urans::steady_iters) {
             wall_forces(cl, cd);
@@ -138,7 +145,7 @@ int main(int argc, char** argv) {
         double r0 = 0.0, r = 0.0;
         int k = 0;
         while (k < urans::inner) {
-            r = dual::flow_step(urans::dt, fatime::CFL);
+            r = flow_step_select(urans::dt, fatime::CFL);
             dual::sa_step(urans::dt, fatime::CFL);
             if (++k == 1)
                 r0 = r;

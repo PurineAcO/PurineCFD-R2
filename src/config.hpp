@@ -263,3 +263,53 @@ inline int S_MAX = 0;           // 环向单元数, 由邻接表表头给出
 inline int N_MAX = 0;           // 径向单元数, 由邻接表表头给出
 inline constexpr int HALO = 3;  // HALO网格层数
 } // namespace structer
+
+namespace cc {
+
+    struct vec5{
+            double rho;     // 密度/连续性
+            double u;       // x-速度
+            double v;       // y-速度
+            double T;       // 温度/能量
+            double miubl;   // 湍流变量/湍流输运
+
+            vec5() = default;
+            // vec5(cell_class cell):rho(cell.phy.rho),u(cell.phy.u),v(cell.phy.v),T(cell.phy.T),miubl(cell.tur.miubl){}
+            vec5(double rho_,double u_,double v_,double t_,double miubl_):rho(rho_),u(u_),v(v_),T(t_),miubl(miubl_){}
+            vec5& operator+=(const vec5 &o){rho+=o.rho;u+=o.u;v+=o.v;T+=o.T;miubl+=o.miubl;return *this;}
+            vec5& operator*=(const double k){rho*=k;u*=k;v*=k;T*=k;miubl*=k;return *this;}
+            void clear();
+        };
+        inline vec5 operator+(vec5 a,const vec5& b){return a+=b;}
+        inline vec5 operator*(vec5 a,const double k){return a*=k;}
+        inline vec5 operator*(const double k,vec5 a){return a*=k;}
+        inline void vec5::clear(){rho = 0.0;u = 0.0;v = 0.0;T = 0.0;miubl = 0.0;}
+
+        struct mat5{
+            vec5 drho;    // 密度Jacobi
+            vec5 du;      // u速度Jacobi
+            vec5 dv;      // v速度Jacobi
+            vec5 dT;      // 温度Jacobi
+            vec5 dmiubl;  // 湍流变量Jacobi
+            mat5() = default;
+            mat5(const vec5& c,const vec5& x,const vec5& y,const vec5& e,const vec5 &tur){drho=c;du=x;dv=y;dT=e;dmiubl=tur;}
+            void clear();
+            mat5& operator+=(const mat5& o){drho+=o.drho;du+=o.du;dv+=o.dv;dT+=o.dT;dmiubl+=o.dmiubl;return *this;}
+            mat5& operator*=(const double k){drho*=k;du*=k;dv*=k;dT*=k;dmiubl*=k;return *this;}
+        };
+        inline mat5 operator+(mat5 a,const mat5& b){return a+=b;}
+        inline mat5 operator*(mat5 a,const double k){return a*=k;}
+        inline mat5 operator*(const double k,mat5 a){return a*=k;}
+        inline void mat5::clear(){drho.clear();du.clear();dv.clear();dT.clear();dmiubl.clear();}
+        inline const vec5& mat5_row(const mat5& m,int r){ return r==0?m.drho:r==1?m.du:r==2?m.dv:r==3?m.dT:m.dmiubl; }
+        inline vec5& mat5_row(mat5& m,int r){ return r==0?m.drho:r==1?m.du:r==2?m.dv:r==3?m.dT:m.dmiubl; }
+        inline double mat5_at(const mat5& m,int r,int c){
+            const vec5& v = mat5_row(m,r);
+            return c==0?v.rho:c==1?v.u:c==2?v.v:c==3?v.T:v.miubl;
+        }
+        inline mat5 mat5_of(const double a[5][5]){
+            mat5 m;
+            for(int r=0;r<5;r++) mat5_row(m,r) = vec5(a[r][0],a[r][1],a[r][2],a[r][3],a[r][4]);
+            return m;
+        }
+}

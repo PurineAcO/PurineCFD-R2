@@ -15,6 +15,8 @@ void convect_JST(cc::face_class& face);
 // 汇总单元各面的无粘和黏性通量
 void assemble_flux(cc::cell_class& cell, char fluxtype = 'R');
 // Roe无粘通量
+#include <utility>
+
 void convect_ROE(cc::face_class& face);
 
 inline void convect_JST(cc::face_class& face) {
@@ -25,6 +27,56 @@ inline void convect_JST(cc::face_class& face) {
     const cc::vec4 G = {rho * v, rho * u * v, rho * v * v + p, rho * v * H};
     face.convect = face.toface_jacobi(F, G);
     jst::dissipation(face);
+}
+
+inline std::pair<cc::mat5,cc::mat5> form_pfgpw_convect(const cc::cell_class& cell){
+    double phi = (cc::gamma-1)/2 * (cell.phy.u*cell.phy.u+cell.phy.v*cell.phy.v);
+    double H = cc::Cp*cell.phy.T + 0.5*(cell.phy.u*cell.phy.u+cell.phy.v*cell.phy.v);
+    cc::vec5 pfpw_c = cc::vec5(0,1,0,0,0);
+    cc::vec5 pfpw_x = cc::vec5(phi-cell.phy.u*cell.phy.u,(3-cc::gamma)*cell.phy.u,(1-cc::gamma)*cell.phy.v,cc::gamma-1,0);
+    cc::vec5 pfpw_y = cc::vec5(-cell.phy.u*cell.phy.v,cell.phy.v,cell.phy.u,0,0);
+    cc::vec5 pfpw_e = cc::vec5(cell.phy.u*(phi-H),H-(cc::gamma-1)*cell.phy.u*cell.phy.u,
+                                -(cc::gamma-1)*cell.phy.u*cell.phy.v,cc::gamma*cell.phy.u,0);
+    cc::vec5 pfpw_tur = cc::vec5(-cell.phy.u*cell.tur.miubl,cell.tur.miubl,0,0,cell.phy.u);
+    cc::mat5 pfpw = cc::mat5(pfpw_c,pfpw_x,pfpw_y,pfpw_e,pfpw_tur);
+    cc::vec5 pgpw_c = cc::vec5(0,0,1,0,0);
+    cc::vec5 pgpw_x = cc::vec5(-cell.phy.u*cell.phy.v,cell.phy.v,cell.phy.u,0,0);
+    cc::vec5 pgpw_y = cc::vec5(phi-cell.phy.v*cell.phy.v,(1-cc::gamma)*cell.phy.u,(3-cc::gamma)*cell.phy.v,cc::gamma-1,0);
+    cc::vec5 pgpw_e = cc::vec5(cell.phy.v*(phi-H),-(cc::gamma-1)*cell.phy.u*cell.phy.v,
+                                H-(cc::gamma-1)*cell.phy.v*cell.phy.v,cc::gamma*cell.phy.v,0);
+    cc::vec5 pgpw_tur = cc::vec5(-cell.phy.v*cell.tur.miubl,0,cell.tur.miubl,0,cell.phy.v);
+    cc::mat5 pgpw = cc::mat5(pgpw_c,pgpw_x,pgpw_y,pgpw_e,pgpw_tur);
+    return std::pair<cc::mat5,cc::mat5>(pfpw,pgpw);
+}
+
+// Roe 耗散矩阵 |A_n| (带面长, 含熵修正)
+inline cc::mat5 roe_abs_n(const cc::face_class& face){
+    const cc::vecp& L = face.phynei[0];
+    const cc::vecp& R = face.phynei[1];
+    const double sl = std::sqrt(L.rho), sh = std::sqrt(R.rho);
+    const double Hl = cc::Cp*L.T+0.5*(L.u*L.u+L.v*L.v), Hh = cc::Cp*R.T+0.5*(R.u*R.u+R.v*R.v);
+    const double ubl = (sl*L.u+sh*R.u)/(sl+sh), vbl = (sl*L.v+sh*R.v)/(sl+sh);
+    const double Hbl = (sl*Hl+sh*Hh)/(sl+sh);
+    const double abl = std::sqrt((cc::gamma-1)*(Hbl-0.5*(ubl*ubl+vbl*vbl)));
+    cc::cell_class st;
+    st.phy.rho = 1.0;
+    st.phy.u = ubl;
+    st.phy.v = vbl;
+    st.phy.T = (Hbl-0.5*(ubl*ubl+vbl*vbl))/cc::Cp;
+    cc::mat5 A = face.toface_jacobi(form_pfgpw_convect(st));
+    const double un = ubl*face.nor.x+vbl*face.nor.y;
+    const double al = abl*face.len, ent = 0.1*abl*face.len;
+    const double l1 = std::max(std::abs(un-al),ent), l4 = std::max(std::abs(un+al),ent);
+    const double l0 = std::max(std::abs(un),ent);
+    const double alpha = (l4-l1)/(2*al), beta = (l4+l1-2*l0)/(2*al*al);
+    double M[5][5], out[5][5];
+    for(int r=0;r<5;r++) for(int c=0;c<5;c++) M[r][c] = cc::mat5_at(A,r,c) - (r==c?un:0.0);
+    for(int r=0;r<5;r++) for(int c=0;c<5;c++){
+        double m2 = 0.0;
+        for(int k=0;k<5;k++) m2 += M[r][k]*M[k][c];
+        out[r][c] = l0*(r==c?1.0:0.0) + alpha*M[r][c] + beta*m2;
+    }
+    return cc::mat5_of(out);
 }
 
 inline void assemble_flux(cc::cell_class& cell, char fluxtype) {

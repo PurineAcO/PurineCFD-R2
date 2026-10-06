@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include <atomic>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #define allface(cell) for (int i = 0; i < cell.ecnt; i++)
@@ -74,6 +75,7 @@ struct face_class {
     template <int N1, int N2>
     void toface_jacobi(const double (&F)[N1][N2], const double (&G)[N1][N2],
                        double (&out)[N1][N2]) const;
+    mat5 toface_jacobi(const std::pair<mat5,mat5> FG) const;
 };
 
 struct cell_class {
@@ -278,6 +280,10 @@ void face_class::toface_jacobi(const double (&F)[N1][N2], const double (&G)[N1][
     for (int i = 0; i < N1; i++)
         for (int j = 0; j < N2; j++)
             out[i][j] = nor.x * F[i][j] + nor.y * G[i][j];
+}
+
+inline mat5 face_class::toface_jacobi(std::pair<mat5,mat5> FG) const{
+    return FG.first*nor.x+FG.second*nor.y;
 }
 
 inline vec2 face_class::length1_nor() {
