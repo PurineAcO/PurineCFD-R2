@@ -28,5 +28,3 @@ readrans.txt
 # 大算例
 cases/naca0012/naca0012_far30.txt
 cases/oat15a/oat15a_sa.txt
-cases/naca0012/urans_m07a48_re3e6.json
-cases/naca0012/urans_m076a32_re1e7.json

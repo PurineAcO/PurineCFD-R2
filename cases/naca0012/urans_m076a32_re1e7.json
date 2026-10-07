@@ -1,0 +1,30 @@
+{
+ "io": {
+  "mesh": "naca0012_sa_fine.txt",
+  "structured": "naca0012_sa_fine_struct.txt",
+  "log": "../../run/PLACEHOLDER/urans_m076a32_re1e7.log",
+  "field": "../../run/PLACEHOLDER"
+ },
+ "solver": {
+  "max_steps": 3000,
+  "cfl": 100.0,
+  "dump_interval": 250,
+  "convergence_interval": 10,
+  "threads": 8,
+  "urans": {
+   "dt": 0.0002,
+   "inner": 40,
+   "inner_tol": 0.001,
+   "sweeps": 4,
+   "steady_iters": 1500,
+   "steady_cfl": 50.0,
+   "wall_interval": 5
+  }
+ },
+ "farfield": {
+  "Ma": 0.76,
+  "T": 300.0,
+  "p": 60238.44967587742,
+  "alpha": 3.2
+ }
+}
