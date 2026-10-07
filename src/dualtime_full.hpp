@@ -1,7 +1,6 @@
 #include "SA.hpp"
 #include "classconfig.hpp"
 #include "config.hpp"
-#include "physic.hpp"
 #include <cmath>
 #include <utility>
 

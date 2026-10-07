@@ -25,6 +25,9 @@ parser.add_argument('config')
 parser.add_argument(
   '--airfoil', action='store_true', help='翼型: 统计上表面激波位置(前缘在 x=-0.5)'
 )
+parser.add_argument(
+  '--u-positive', action='store_true', help='u 扬色标只覆盖正值(0~max), 负值走 under 颜色'
+)
 args = parser.parse_args()
 
 base = os.path.dirname(os.path.abspath(args.config))
@@ -190,7 +193,8 @@ def panel(z, name, levels, cmap, extend, bar):
 
 U_inf = far['Ma'] * np.sqrt(GAMMA * 287.05 * far['T'])
 specs = [
-    ('u', 'RdBu_r', -1.2 * U_inf, 1.2 * U_inf, r'$u$ [m/s]'),
+    ('u', 'RdBu_r', 0.0 if args.u_positive else -1.2 * U_inf,
+     None if args.u_positive else 1.2 * U_inf, r'$u$ [m/s]'),
     ('v', 'RdBu_r', -0.6 * U_inf, 0.6 * U_inf, r'$v$ [m/s]'),
     ('rho', 'jet', None, None, r'$\rho$ [kg/m$^3$]'),
     ('miubl', 'jet', 0.0, None, r'$\tilde\nu$ [m$^2$/s]'),
