@@ -1,5 +1,5 @@
 // tests/debug.cpp
-// 圆柱绕流 URANS 分步检验台: 只驱动 src 的头文件
+// OAT15A 双时间步隐式求解检验台: 只驱动 src 的头文件
 // 结果写入仓库根目录 ./debugres, 控制台同步打印进度与通过情况
 #include "HALO.hpp"
 #include "SA.hpp"
@@ -7,6 +7,8 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "convect.hpp"
+#include "dualtime.hpp"
+#include "dualtime_full.hpp"
 #include "geometry.hpp"
 #include "grad.hpp"
 #include "initialize.hpp"
@@ -14,7 +16,6 @@
 #include "io.hpp"
 #include "physic.hpp"
 #include "readmesh.hpp"
-#include "timarch.hpp"
 #include "udf.hpp"
 
 #include <algorithm>
@@ -190,90 +191,11 @@ static void refresh_field() {
     }
 }
 
-// 与 timarch.hpp 的 one_rans 逐行对应, 但外层循环并行
-static void pseudo_step_omp(double dt, bool urans) {
-#pragma omp parallel for schedule(static)
-    for (int c = 0; c < cc::cell_num; c++) {
-        cc::CellList[c].copyconver();
-    }
-    for (int z = 0; z < 3; z++) {
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            cc::CellList[c].prim();
-        }
-        noslip_wall_boundary();
-        far_field_boundary();
-        update_ghost_field();
-        // 层流要在这儿再压一次, 否则远场入流面会被赋予 ν̃_∞
-        if (g_laminar) { freeze_turbulence(); }
-#pragma omp parallel for schedule(static)
-        for (int f = 0; f < cc::face_num; f++) {
-            interpolate_mid(&cc::FaceList[f]);
-            muscl(&cc::FaceList[f]);
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            least_square_cell_based(cc::CellList[c]);
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            grad_onface(cc::CellList[c]);
-        }
-        if (cc::scheme == 'J') {
-#pragma omp parallel for schedule(static)
-            for (int c = 0; c < cc::cell_num; c++) {
-                jst::shockwave_recognize(cc::CellList[c]);
-            }
-#pragma omp parallel for schedule(static)
-            for (int c = 0; c < cc::cell_num; c++) {
-                jst::laplace_dissipation(cc::CellList[c]);
-            }
-#pragma omp parallel for schedule(static)
-            for (int f = 0; f < cc::face_num; f++) {
-                convect_JST(cc::FaceList[f]);
-            }
-        } else {
-#pragma omp parallel for schedule(static)
-            for (int f = 0; f < cc::face_num; f++) {
-                convect_ROE(cc::FaceList[f]);
-            }
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            assemble_flux(cc::CellList[c], cc::scheme);
-        }
-#pragma omp parallel for schedule(static)
-        for (int f = 0; f < cc::face_num; f++) {
-            SA::diffusion_SA(cc::FaceList[f]);
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            SA::assemble_visflux(cc::CellList[c]);
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            local_timestep(cc::CellList[c]);
-        }
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            cc::cell_class& cell = cc::CellList[c];
-            if (!urans) {
-                cell.conser = cell.conserformer -
-                              RK::RK3[z] / cell.vol * cell.localdt * (cell.convect - cell.visflux);
-            } else {
-                cell.conser =
-                    cell.conserformer - RK::RK3[z] / (1.0 / cell.localdt + 1.0 / (2 * dt)) *
-                                            (1.0 / cell.vol * (cell.convect - cell.visflux) +
-                                             1.0 / (2 * dt) * (cell.conser - cell.lastconser));
-            }
-        }
-    }
-    if (!g_laminar) {
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            SA::SA_equation_after(cc::CellList[c], cc::CellList[c].localdt, dt, urans);
-        }
-    }
+// 一次隐式伪时间推进: dual_full 的精确块对角 Jacobi + SA 方程
+static double implicit_step(double dt, double cfl) {
+    const double r = dual_full::flow_step(dt, cfl);
+    if (!g_laminar) { dual::sa_step(dt, cfl); }
+    return r;
 }
 
 static void snapshot(std::vector<cc::vec4>& conser, std::vector<double>& bl) {
@@ -1178,195 +1100,208 @@ static bool check_10_source() {
 }
 
 // ===========================================================================
-// 检验 11: 一次 RK 子步
+// 检验 11: 远场边界 BC 与无粘通量
 // ===========================================================================
-static bool check_11_one_rk(double dt) {
-    FILE* fp = out_open("check11_rk1.txt");
-    std::vector<cc::vec4> conser0;
-    std::vector<double> bl0;
-    snapshot(conser0, bl0);
-    for (int c = 0; c < cc::cell_num; c++) {
-        cc::CellList[c].copyconver_time();
-    }
+static bool check_11_farfield() {
+    FILE* fp = out_open("check11_farfield.txt");
     refresh_field();
-#pragma omp parallel for schedule(static)
-    for (int f = 0; f < cc::face_num; f++) {
-        convect_ROE(cc::FaceList[f]);
-    }
-#pragma omp parallel for schedule(static)
-    for (int c = 0; c < cc::cell_num; c++) {
-        assemble_flux(cc::CellList[c]);
-    }
-#pragma omp parallel for schedule(static)
-    for (int f = 0; f < cc::face_num; f++) {
-        SA::diffusion_SA(cc::FaceList[f]);
-    }
-#pragma omp parallel for schedule(static)
-    for (int c = 0; c < cc::cell_num; c++) {
-        SA::assemble_visflux(cc::CellList[c]);
-    }
-#pragma omp parallel for schedule(static)
-    for (int c = 0; c < cc::cell_num; c++) {
-        local_timestep(cc::CellList[c]);
-    }
-    // 锁定伪时间步基准态, 再更新一次
-    std::vector<cc::vec4> before(cc::cell_num);
-    for (int c = 0; c < cc::cell_num; c++) {
-        before[c] = cc::CellList[c].conser;
-        cc::CellList[c].conserformer = before[c];
-    }
-#pragma omp parallel for schedule(static)
+    // (a) far_bc_state + far_face_flux 必须逐位复现主求解器算出的面通量
+    int far_faces = 0, mismatch = 0, nan_face = 0;
+    double worst = 0.0;
+    fprintf(fp, "# cell face mine(c,x,y,e) src(c,x,y,e) rel\n");
     for (int c = 0; c < cc::cell_num; c++) {
         cc::cell_class& cell = cc::CellList[c];
-        cell.conser = cell.conserformer - RK::RK3[0] / (1.0 / cell.localdt + 1.0 / (2 * dt)) *
-                                              (1.0 / cell.vol * (cell.convect - cell.visflux) +
-                                               1.0 / (2 * dt) * (before[c] - cell.lastconser));
+        for (int i = 0; i < cell.ecnt; i++) {
+            cc::face_class* f = cell.faces[i];
+            if (f->type == cc::INTER || f->type == cc::WALL) { continue; }
+            ++far_faces;
+            const cc::vecp bc = dual_full::far_bc_state(cell, *f);
+            const double sgn = f->nei[0] == &cell ? 1.0 : -1.0;
+            const cc::vec4 mine = sgn * dual_full::far_face_flux(*f, bc);
+            const cc::vec4 src = sgn * f->convect;
+            if (!std::isfinite(mine.c) || !std::isfinite(src.c)) {
+                ++nan_face;
+                continue;
+            }
+            const double e = std::max(std::max(rel_err(mine.c, src.c), rel_err(mine.x, src.x)),
+                                      std::max(rel_err(mine.y, src.y), rel_err(mine.e, src.e)));
+            worst = std::max(worst, e);
+            if (e > 1e-11) { ++mismatch; }
+            if (far_faces <= 12) {
+                fprintf(fp, "%d %d  %.6e %.6e %.6e %.6e  %.6e %.6e %.6e %.6e  %.2e\n", cell.index,
+                        f->index, mine.c, mine.x, mine.y, mine.e, src.c, src.x, src.y, src.e, e);
+            }
+        }
     }
-    int mismatch = 0, nan_cell = 0, neg_dt = 0;
-    double worst = 0.0, worst_ratio = 0.0, min_dt = 1e300, max_dt = 0.0, min_chi = 1e300;
-    fprintf(fp, "dt %.6e RK3[0] %.6f\n", dt, RK::RK3[0]);
-    fprintf(fp, "# idx localdt chi R_conv.c R_phys.c conser_new.c conser_manual.c rel\n");
+    // (b) FD Jacobian 应对步长不敏感
+    int cells_far = 0, drift = 0;
+    double worst_drift = 0.0;
+    fprintf(fp, "\n# cell  J(1e-5) 与 J(1e-7) 的最大相对差\n");
     for (int c = 0; c < cc::cell_num; c++) {
         cc::cell_class& cell = cc::CellList[c];
-        const double scale = 1.0 / cell.localdt + 1.0 / (2 * dt);
-        const double chi = RK::RK3[0] / scale;
-        const cc::vec4 R = (cell.convect - cell.visflux) * (1.0 / cell.vol);
-        const cc::vec4 Rp = (before[c] - cell.lastconser) * (1.0 / (2 * dt));
-        const cc::vec4 manual = cell.conserformer - (R + Rp) * chi;
-        if (!std::isfinite(cell.localdt) || !std::isfinite(chi) || !std::isfinite(manual.c) ||
-            !std::isfinite(cell.conser.c)) {
-            ++nan_cell;
-            continue;
-        }
-        const double e =
-            std::max(std::max(rel_err(cell.conser.c, manual.c), rel_err(cell.conser.x, manual.x)),
-                     std::max(rel_err(cell.conser.y, manual.y), rel_err(cell.conser.e, manual.e)));
-        worst = std::max(worst, e);
-        if (e > 1e-13) { ++mismatch; }
-        if (!(cell.localdt > 0.0)) { ++neg_dt; }
-        min_dt = std::min(min_dt, cell.localdt);
-        max_dt = std::max(max_dt, cell.localdt);
-        const double ratio = chi / cell.localdt;
-        worst_ratio = std::max(worst_ratio, ratio);
-        min_chi = std::min(min_chi, ratio);
-        if (c < 4) {
-            fprintf(fp, "%d %.6e %.6e %.6e %.6e %.10e %.10e %.1e\n", cell.index, cell.localdt, chi,
-                    R.c, Rp.c, cell.conser.c, manual.c, e);
-        }
-    }
-    fprintf(fp, "\nformula_mismatch %d\nnonfinite %d\nworst_rel %.3e\n", mismatch, nan_cell, worst);
-    {
-        const cc::cell_class& cell = cc::CellList[0];
-        fprintf(fp, "\n# 首个格子逐面通量 cell idx %d vol %.6e rho %.6e\n", cell.index, cell.vol,
-                cell.phy.rho);
+        bool has_far = false;
         for (int i = 0; i < cell.ecnt; i++) {
             const cc::face_class* f = cell.faces[i];
-            fprintf(
-                fp,
-                "  face[%d] idx %d type %d outer %d islow %d fnorm %d conv %.6e %.6e %.6e %.6e\n",
-                i, f->index, f->type, (int)f->outer, (int)(f->nei[0] == &cell), (int)cell.fnorm[i],
-                f->convect.c, f->convect.x, f->convect.y, f->convect.e);
-            fprintf(fp,
-                    "      L(rho %.6e u %.6e v %.6e T %.6e)  R(rho %.6e u %.6e v %.6e T %.6e)\n",
-                    f->phynei[0].rho, f->phynei[0].u, f->phynei[0].v, f->phynei[0].T,
-                    f->phynei[1].rho, f->phynei[1].u, f->phynei[1].v, f->phynei[1].T);
+            if (f->type != cc::INTER && f->type != cc::WALL) {
+                has_far = true;
+                break;
+            }
         }
+        if (!has_far) { continue; }
+        ++cells_far;
+        mat4 J1, J2, J3;
+        dual_full::far_face_jacobian(cell, J1, 1e-5);
+        dual_full::far_face_jacobian(cell, J2, 1e-7);
+        dual_full::far_face_jacobian(cell, J3, 1e-9);
+        double d = 0.0, sc = 0.0;
+        for (int r = 0; r < 4; r++) {
+            for (int q = 0; q < 4; q++) {
+                d = std::max(d, std::abs(J1.a[r][q] - J3.a[r][q]));
+                sc = std::max(sc, std::abs(J2.a[r][q]));
+            }
+        }
+        const double rel = sc > 0.0 ? d / sc : d;
+        worst_drift = std::max(worst_drift, rel);
+        if (rel > 1e-5) { ++drift; }
+        if (cells_far <= 8) { fprintf(fp, "%d  %.3e\n", cell.index, rel); }
     }
-    fprintf(fp, "localdt range [%.6e, %.6e], <=0 的格子 %d\n", min_dt, max_dt, neg_dt);
-    fprintf(fp, "振幅因子 chi/localdt range [%.6e, %.6e], 要求 0<chi<=localdt\n", min_chi,
-            worst_ratio);
+    fprintf(fp, "\nfar_faces %d\nflux_mismatch %d\nnonfinite %d\nworst_rel %.3e\n", far_faces,
+            mismatch, nan_face, worst);
+    fprintf(fp, "far_cells %d\njac_drift(1e-5 vs 1e-9) %d\nworst_drift %.3e\n", cells_far,
+            drift, worst_drift);
     fclose(fp);
-    restore(conser0, bl0);
-    const bool ok = mismatch == 0 && nan_cell == 0 && neg_dt == 0 && worst_ratio <= 1.0 + 1e-12;
-    g_info = fmt("代数式复算一致 mismatch=%d localdt[%.2e,%.2e] <=0的格子=%d chi/localdt<=%.4f",
-                 mismatch, min_dt, max_dt, neg_dt, worst_ratio);
+    const bool ok = far_faces > 0 && mismatch == 0 && nan_face == 0 && drift == 0;
+    g_info = fmt("远场面 %d, 通量复现 mismatch=%d (max_rel=%.2e), FD 步长漂移 %d (max=%.2e)",
+                 far_faces, mismatch, worst, drift, worst_drift);
     return ok;
 }
 
 // ===========================================================================
-// 检验 12: 三次 RK 构成的一组伪时间步
+// 检验 12: 远场 FD Jacobian 的方向导数对拍 + 隐式对角块健康度
 // ===========================================================================
-static bool check_12_three_rk(double dt) {
-    FILE* fp = out_open("check12_rk3.txt");
-    // (a) 检验台实现 vs src 的 one_rans, 两次都从同一初始状态出发
-    std::vector<cc::vec4> conser0, src_res, mine;
-    std::vector<double> bl0, src_bl, mine_bl;
+static bool check_12_farjac(double dt) {
+    FILE* fp = out_open("check12_farjac.txt");
+    std::vector<cc::vec4> conser0;
+    std::vector<double> bl0;
     snapshot(conser0, bl0);
     refresh_field();
-    one_rans(dt, true);
-    snapshot(src_res, src_bl);
-    restore(conser0, bl0);
-    refresh_field();
-    pseudo_step_omp(dt, true);
-    snapshot(mine, mine_bl);
-    int mismatch = 0, nan_cell = 0;
+    // (a) J·dir 应与 far_flux_sum 的中心差分一致
+    const double dq[4] = {0.13, -0.27, 0.19, -0.31};
+    int cells_far = 0, mismatch = 0, nan_cell = 0;
     double worst = 0.0;
+    fprintf(fp, "# cell  max|J*dir - dR/dh| / |dR/dh|\n");
     for (int c = 0; c < cc::cell_num; c++) {
-        if (!std::isfinite(mine[c].c) || !std::isfinite(src_res[c].c)) {
-            ++nan_cell;
-            continue;
+        cc::cell_class& cell = cc::CellList[c];
+        bool has_far = false;
+        for (int i = 0; i < cell.ecnt; i++) {
+            const cc::face_class* f = cell.faces[i];
+            if (f->type != cc::INTER && f->type != cc::WALL) {
+                has_far = true;
+                break;
+            }
         }
-        const double e =
-            std::max(std::max(rel_err(mine[c].c, src_res[c].c), rel_err(mine[c].x, src_res[c].x)),
-                     std::max(rel_err(mine[c].y, src_res[c].y), rel_err(mine[c].e, src_res[c].e)));
+        if (!has_far) { continue; }
+        ++cells_far;
+        const cc::vec4 Q0 = cell.conser;
+        // 每个分量各取一个扰动量, 组成方向 dir
+        const double qv[4] = {Q0.c, Q0.x, Q0.y, Q0.e};
+        double dir[4];
+        for (int q = 0; q < 4; q++) { dir[q] = dq[q] * std::max(std::abs(qv[q]), 1e-30); }
+        mat4 J;
+        dual_full::far_face_jacobian(cell, J, 1e-6);
+        double jd[4] = {0.0, 0.0, 0.0, 0.0};
+        for (int r = 0; r < 4; r++) {
+            for (int q = 0; q < 4; q++) { jd[r] += J.a[r][q] * dir[q]; }
+        }
+        const double h = 1e-5;
+        cc::vec4 Qp = Q0, Qm = Q0;
+        Qp.c += h * dir[0];
+        Qp.x += h * dir[1];
+        Qp.y += h * dir[2];
+        Qp.e += h * dir[3];
+        Qm.c -= h * dir[0];
+        Qm.x -= h * dir[1];
+        Qm.y -= h * dir[2];
+        Qm.e -= h * dir[3];
+        cell.conser = Qp;
+        cell.prim();
+        const cc::vec4 Rp = dual_full::far_flux_sum(cell);
+        cell.conser = Qm;
+        cell.prim();
+        const cc::vec4 Rm = dual_full::far_flux_sum(cell);
+        cell.conser = Q0;
+        cell.prim();
+        const double rp[4] = {Rp.c, Rp.x, Rp.y, Rp.e};
+        const double rm[4] = {Rm.c, Rm.x, Rm.y, Rm.e};
+        double e = 0.0;
+        for (int r = 0; r < 4; r++) {
+            const double fd = (rp[r] - rm[r]) / (2.0 * h);
+            if (!std::isfinite(fd) || !std::isfinite(jd[r])) { ++nan_cell; break; }
+            e = std::max(e, rel_err(jd[r], fd));
+        }
         worst = std::max(worst, e);
-        if (e > 1e-14) { ++mismatch; }
+        if (e > 1e-4) { ++mismatch; }
+        if (cells_far <= 8) { fprintf(fp, "%d  %.3e\n", cell.index, e); }
     }
-    // (b) 三次子步的相容性与稳定性
-    const double a1 = RK::RK3[0], a2 = RK::RK3[1], a3 = RK::RK3[2];
-    const bool last_one = a3 == 1.0;
-    double max_mod = 0.0, first_unstable = 0.0;
-    for (double t = 0.01; t <= 3.0; t += 0.01) {
-        // lam*dtau = i*t, U_k = U0 - a_k*l*U_{k-1}
-        const double li = t;
-        const double r1 = 1.0, i1 = -a1 * li;
-        double pr = -li * i1, pi = li * r1;
-        const double r2 = 1.0 - a2 * pr, i2 = -a2 * pi;
-        pr = -li * i2;
-        pi = li * r2;
-        const double r3 = 1.0 - a3 * pr, i3 = -a3 * pi;
-        const double mod = std::hypot(r3, i3);
-        if (mod > 1.0 && first_unstable == 0.0) { first_unstable = t; }
-        max_mod = std::max(max_mod, mod);
-    }
-    // (c) 两次稳态伪时间步的相对变化应递减
-    double r_first = 0.0, r_second = 0.0, peak = 0.0;
-    restore(conser0, bl0);
-    refresh_field();
-    const int steady_passes = g_rans ? 60 : 2;
-    for (int pass = 0; pass < steady_passes; pass++) {
-        std::vector<cc::vec4> before(cc::cell_num);
-        for (int c = 0; c < cc::cell_num; c++) {
-            before[c] = cc::CellList[c].conser;
+    // (b) flow_step 解出的 dQ 与对角块、右端项是否自洽
+    const double res = implicit_step(dt, fatime::CFL);
+    double num = 0.0, den = 0.0;
+    int neg_diag = 0, bad_dq = 0;
+    double min_diag = 1e300;
+    for (int c = 0; c < cc::cell_num; c++) {
+        const mat4& D = dual_full::dmat[c];
+        const double v[4] = {dual::dQ[c].c, dual::dQ[c].x, dual::dQ[c].y, dual::dQ[c].e};
+        const double rh[4] = {dual::rhs[c].c, dual::rhs[c].x, dual::rhs[c].y, dual::rhs[c].e};
+        for (int r = 0; r < 4; r++) {
+            double acc = rh[r];
+            for (int q = 0; q < 4; q++) { acc += D.a[r][q] * v[q]; }
+            num += acc * acc;
+            den += rh[r] * rh[r];
         }
-        pseudo_step_omp(dt, false);
-        const double now = increment_l2(before);
-        if (pass == 0) { r_first = now; }
-        r_second = now;
-        peak = std::max(peak, now);
+        for (int r = 0; r < 4; r++) {
+            if (!(D.a[r][r] > 0.0)) { ++neg_diag; }
+            min_diag = std::min(min_diag, D.a[r][r]);
+        }
+        if (!std::isfinite(v[0])) { ++bad_dq; }
     }
+    // (c) 对角块健康度: 关掉/打开远场 Jacobian 各跑一次比较
+    int neg_off = 0, neg_on = 0;
+    double min_off = 1e300, min_on = 1e300;
+    auto diag_stats = [](int& neg, double& mind) {
+        neg = 0;
+        mind = 1e300;
+        for (int c = 0; c < cc::cell_num; c++) {
+            const mat4& D = dual_full::dmat[c];
+            for (int r = 0; r < 4; r++) {
+                if (!(D.a[r][r] > 0.0)) { ++neg; }
+                mind = std::min(mind, D.a[r][r]);
+            }
+        }
+    };
     restore(conser0, bl0);
     refresh_field();
-    if (g_laminar) {
-        mismatch = 0;
-        nan_cell = 0;
-        worst = 0.0;
-    }
+    dual_full::far_jac = false;
+    implicit_step(dt, fatime::CFL);
+    diag_stats(neg_off, min_off);
+    restore(conser0, bl0);
+    refresh_field();
+    dual_full::far_jac = true;
+    implicit_step(dt, fatime::CFL);
+    diag_stats(neg_on, min_on);
+    fprintf(fp, "\nfar_cells %d\ndir_mismatch %d\nnonfinite %d\nworst_rel %.3e\n", cells_far,
+            mismatch, nan_cell, worst);
     fprintf(fp,
-            "(a) 检验台实现 vs src one_rans (相同初值)%s\n    cell_mismatch %d  nonfinite %d  "
-            "worst_rel %.3e\n",
-            g_laminar ? " [层流: 不跑SA, 对比无意义, 已跳过]" : "", mismatch, nan_cell, worst);
-    fprintf(fp, "(b) 系数 %.4f %.4f %.4f, 末次系数为1 %d\n", a1, a2, a3, last_one ? 1 : 0);
-    fprintf(fp, "    经典三阶要求 1/3 1/2 1, 偏差 %.4f %.4f %.4f\n", a1 - 1.0 / 3, a2 - 0.5,
-            a3 - 1.0);
-    fprintf(fp, "    虚轴放大因子 max|P| %.4f, 首次超过 1 的 theta %.2f\n", max_mod,
-            first_unstable);
-    fprintf(fp, "(c) 稳态伪时间步相邻增量: 首次 %.6e 峰值 %.6e 末次 %.6e (应从峰值回落)\n", r_first,
-            peak, r_second);
+            "\nflow_step res_L2 %.6e\n|D*dQ+rhs|/|rhs| %.6e\n非正对角元 %d\n最小对角元 %.4e\n"
+            "dQ 非有限 %d\n",
+            res, den > 0.0 ? std::sqrt(num / den) : 0.0, neg_diag, min_diag, bad_dq);
+    fprintf(fp, "对角块 far_jac=off: 非正 %d, 最小 %.4e\n对角块 far_jac=on : 非正 %d, 最小 %.4e\n",
+            neg_off, min_off, neg_on, min_on);
     fclose(fp);
-    const bool ok = mismatch == 0 && nan_cell == 0 && last_one && r_second < peak;
-    g_info = fmt("与one_rans完全一致=%d 末次系数1=%d 稳态增量 %.2e->%.2e 虚轴max|P|=%.2f",
-                 mismatch == 0 ? 1 : 0, last_one ? 1 : 0, r_first, r_second, max_mod);
+    restore(conser0, bl0);
+    refresh_field();
+    const bool ok = cells_far > 0 && mismatch == 0 && nan_cell == 0 && bad_dq == 0;
+    g_info = fmt("对拍 mismatch=%d (max=%.2e) |D*dQ+rhs|/|rhs|=%.2e 非正对角元 off/on = %d/%d",
+                 mismatch, worst, den > 0.0 ? std::sqrt(num / den) : 0.0, neg_off, neg_on);
     return ok;
 }
 
@@ -1388,7 +1323,7 @@ static bool check_13_step(double dt, int subiter) {
             for (int c = 0; c < cc::cell_num; c++) {
                 before[c] = cc::CellList[c].conser;
             }
-            pseudo_step_omp(0.0, false);
+            implicit_step(0.0, fatime::CFL);
             const double inc = increment_l2(before);
             const double now = change_l2(conser0, &max_bl);
             if (!std::isfinite(inc) || !std::isfinite(max_bl)) {
@@ -1429,7 +1364,7 @@ static bool check_13_step(double dt, int subiter) {
         for (int c = 0; c < cc::cell_num; c++) {
             before[c] = cc::CellList[c].conser;
         }
-        pseudo_step_omp(dt, true);
+        implicit_step(dt, fatime::CFL);
         const double inc = increment_l2(before);
         const double now = change_l2(conser0, &max_bl);
         if (!std::isfinite(inc) || !std::isfinite(max_bl)) {
@@ -1466,128 +1401,62 @@ static bool check_13_step(double dt, int subiter) {
 }
 
 // ===========================================================================
-// 检验 14: 短跑物理步数
+// 检验 14: 伪时间 CFL 与内迭代数的标定
+//   同一初场下逐组重跑: 残差降到 inner_tol 需多少次 inner, 以及能否保持稳定
 // ===========================================================================
-static bool check_14_run(double dt, int subiter, int steps) {
-    FILE* fp = out_open("residual_run.csv");
+static bool check_14_calib(double dt, int steps) {
+    FILE* fp = out_open("calib.csv");
+    const double cfls[] = {25.0, 50.0, 100.0, 200.0, 400.0};
+    const int ncal = (int)(sizeof(cfls) / sizeof(cfls[0]));
+    const int KMAX = 200;
+    const double tol = urans::inner_tol;
+    fprintf(fp, "# inner_tol %.1e  KMAX %d  steps %d\n", tol, KMAX, steps);
+    fprintf(fp, "cfl,step,k,res,ratio\n");
     std::vector<cc::vec4> conser0;
     std::vector<double> bl0;
-    double last_l2 = 0.0, l2_first = 0.0;
-    int nan_step = 0;
-    if (g_rans) {
-        fprintf(fp, "step,res_increment,res_from_initial,max_miubl,min_localdt\n");
-        std::vector<cc::vec4> before(cc::cell_num);
+    snapshot(conser0, bl0);
+    int bad = 0;
+    for (int ic = 0; ic < ncal; ic++) {
+        const double cfl = cfls[ic];
+        restore(conser0, bl0);
+        refresh_field();
+        int k_last = 0, div_step = 0;
+        double ratio_last = 0.0;
         for (int n = 1; n <= steps; n++) {
 #pragma omp parallel for schedule(static)
             for (int c = 0; c < cc::cell_num; c++) {
-                before[c] = cc::CellList[c].conser;
+                cc::CellList[c].lastconser = cc::CellList[c].conser;
+                cc::CellList[c].tur.miubl_former = cc::CellList[c].tur.miubl;
             }
-            pseudo_step_omp(0.0, false);
-            const double inc = increment_l2(before);
-            double maxbl = 0.0, min_dt = 1e300;
-            int bad = 0;
-#pragma omp parallel for schedule(static) reduction(max : maxbl) reduction(min : min_dt) \
-    reduction(+ : bad)
-            for (int c = 0; c < cc::cell_num; c++) {
-                const cc::cell_class& cell = cc::CellList[c];
-                maxbl = std::max(maxbl, std::abs(cell.tur.miubl));
-                if (std::isfinite(cell.localdt)) { min_dt = std::min(min_dt, cell.localdt); }
-                if (!std::isfinite(cell.conser.c) || !std::isfinite(cell.tur.miubl)) { bad = 1; }
+            double r0 = 0.0, r = 0.0;
+            int k = 0;
+            for (k = 1; k <= KMAX; k++) {
+                r = implicit_step(dt, cfl);
+                if (k == 1) { r0 = r; }
+                fprintf(fp, "%.1f,%d,%d,%.6e,%.6e\n", cfl, n, k, r, r0 > 0.0 ? r / r0 : 0.0);
+                if (!std::isfinite(r)) { break; }
+                if (k > 1 && r < tol * r0) { break; }
             }
-            last_l2 = inc;
-            if (n == 1) { l2_first = inc; }
-            if (n <= 15 || n % 500 == 0) { miubl_trace(n, dt, false); }
-            fprintf(fp, "%d,%.10e,%.10e,%.10e,%.10e\n", n, inc, change_l2(before, nullptr), maxbl,
-                    min_dt);
-            if (n % 10 == 0 || n == steps) {
-                printf("      iter %4d  增量L2=%.4e  max_miubl=%.4e\n", n, inc, maxbl);
-                fflush(stdout);
-            }
-            if (g_dump_every > 0 && n % g_dump_every == 0) {
-                dump_field(std::to_string(n), n, dt);
-                fflush(stdout);
-            }
-            if (bad) {
-                ++nan_step;
-                fprintf(fp, "# 第 %d 次迭代出现非有限值\n", n);
+            k_last = k;
+            ratio_last = r0 > 0.0 ? r / r0 : 0.0;
+            if (!std::isfinite(ratio_last)) {
+                div_step = n;
+                ++bad;
                 break;
             }
+            if (n == steps) { miubl_trace(n, dt, true); }
         }
-        fclose(fp);
-        const bool ok = nan_step == 0 && std::isfinite(last_l2) && last_l2 < l2_first;
-        g_info = fmt("RANS %d 次迭代, 增量L2 %.3e -> %.3e", steps, l2_first, last_l2);
-        return ok;
-    }
-    fprintf(fp, "step,res_conser,res_convect,res_visflux,max_miubl,min_localdt\n");
-    FILE* inner_fp = out_open("inner_residual.csv");
-    std::vector<cc::vec4> inner_before(cc::cell_num);
-    if (inner_fp != nullptr) { fprintf(inner_fp, "step,k,inner_residual\n"); }
-    for (int n = 1; n <= steps; n++) {
-        snapshot(conser0, bl0);
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            cc::CellList[c].copyconver_time();
-        }
-        for (int k = 0; k < subiter; k++) {
-            const bool trace_inner = (inner_fp != nullptr) && (n <= 50);
-            if (trace_inner) {
-#pragma omp parallel for schedule(static)
-                for (int c = 0; c < cc::cell_num; c++) {
-                    inner_before[c] = cc::CellList[c].conser;
-                }
-            }
-            pseudo_step_omp(dt, true);
-            if (trace_inner) {
-                fprintf(inner_fp, "%d,%d,%.6e\n", n, k + 1, increment_l2(inner_before));
-            }
-        }
-        double maxbl = 0.0, min_dt = 1e300, rc = 0.0, rx = 0.0, rv = 0.0;
-        int bad = 0;
-#pragma omp parallel for schedule(static) reduction(max : maxbl) reduction(min : min_dt) \
-    reduction(+ : rc, rx, rv, bad)
-        for (int c = 0; c < cc::cell_num; c++) {
-            const cc::cell_class& cell = cc::CellList[c];
-            const cc::vec4 d = cell.conser - conser0[c];
-            rc += d.c * d.c + d.x * d.x + d.y * d.y + d.e * d.e;
-            const cc::vec4 conv = (cell.convect - cell.visflux) * (1.0 / cell.vol);
-            rx += conv.c * conv.c + conv.x * conv.x + conv.y * conv.y + conv.e * conv.e;
-            const cc::vec4 vis = cell.visflux * (1.0 / cell.vol);
-            rv += vis.c * vis.c + vis.x * vis.x + vis.y * vis.y + vis.e * vis.e;
-            maxbl = std::max(maxbl, std::abs(cell.tur.miubl));
-            if (std::isfinite(cell.localdt)) { min_dt = std::min(min_dt, cell.localdt); }
-            if (!std::isfinite(cell.conser.c) || !std::isfinite(cell.tur.miubl)) { bad = true; }
-        }
-        last_l2 = std::sqrt(rc / cc::cell_num);
-        if (n == 1) { l2_first = last_l2; }
-        fprintf(fp, "%d,%.10e,%.10e,%.10e,%.10e,%.10e\n", n, last_l2, std::sqrt(rx / cc::cell_num),
-                std::sqrt(rv / cc::cell_num), maxbl, min_dt);
-        if (n % 10 == 0 || n == steps) {
-            printf("      step %4d  L2(dU)=%.4e  R_convect=%.4e  max_miubl=%.4e\n", n, last_l2,
-                   std::sqrt(rx / cc::cell_num), maxbl);
-            fflush(stdout);
-        }
-        if (g_dump_every > 0 && n % g_dump_every == 0) {
-            dump_field(std::to_string(n), n, dt);
-            fflush(stdout);
-        }
-        if (n <= 15) { miubl_trace(n, dt, true); }
-        if (bad) {
-            ++nan_step;
-            fprintf(fp, "# 第 %d 个物理步出现非有限值\n", n);
-            const int bad_c = first_bad_cell();
-            if (bad_c >= 0) {
-                fprintf(fp, "  首个异常格 index=%d s=%d n=%d conser=%.4e localdt=%.4e miubl=%.4e\n",
-                        bad_c + 1, cc::CellList[bad_c].s, cc::CellList[bad_c].n,
-                        cc::CellList[bad_c].conser.c, cc::CellList[bad_c].localdt,
-                        cc::CellList[bad_c].tur.miubl);
-            }
-            break;
-        }
+        const double dU = change_l2(conser0, nullptr);
+        printf("      CFL %6.1f: 末步 inner %3d 次, res/res0 = %s, L2(dU)=%.3e%s\n", cfl, k_last,
+               std::isfinite(ratio_last) ? fmt("%.3e", ratio_last).c_str() : "发散", dU,
+               div_step ? fmt("  <- 第 %d 步发散", div_step).c_str() : "");
+        fflush(stdout);
     }
     fclose(fp);
-    if (inner_fp != nullptr) { fclose(inner_fp); }
-    const bool ok = nan_step == 0 && std::isfinite(last_l2);
-    g_info = fmt("%d 步无异常, 每步 L2(dU) %.3e -> %.3e", steps, l2_first, last_l2);
+    restore(conser0, bl0);
+    refresh_field();
+    const bool ok = bad == 0;
+    g_info = fmt("%d 组 CFL 各跑 %d 步, 发散 %d 组", ncal, steps, bad);
     return ok;
 }
 
@@ -1612,7 +1481,7 @@ static bool dump_field(const std::string& tag, int steps, double dt) {
     const double rho_inf = FAR_DEFINE.p / (cc::R * FAR_DEFINE.T);
     const double U_inf = std::hypot(FAR_DEFINE.u, FAR_DEFINE.v);
     const double q_inf = 0.5 * rho_inf * U_inf * U_inf;
-    fprintf(fp, "TITLE=\"cylinder Re=%.0f Ma=0.2 %s dt=%.3e after %d steps\"\n", g_re,
+    fprintf(fp, "TITLE=\"OAT15A Re_c=%.3e %s dt=%.3e after %d steps\"\n", g_re,
             g_rans ? "RANS" : "URANS", dt, steps);
     fprintf(fp, "VARIABLES=\"x\",\"y\",\"rho\",\"u\",\"v\",\"T\",\"p\",\"Ma\",\"nu_tilde\",\"Cp\","
                 "\"s\",\"n\"\n");
@@ -1657,7 +1526,7 @@ static bool dump_field(const std::string& tag, int steps, double dt) {
                 w->mid.y, cp, ma, fxp, fyp, fxv, fyv);
     }
     fclose(wp);
-    const double D_ref = 1.0;
+    const double D_ref = 0.229999;
     const double ref_force = q_inf * D_ref;
     // 风轴系: 阻力沿来流, 升力垂直来流; 来流方向由远场速度矢量给出
     const double arad = std::atan2(FAR_DEFINE.v, FAR_DEFINE.u);
@@ -1815,30 +1684,18 @@ static void miubl_trace(int iter, double dt, bool urans) {
 // 主流程
 // ===========================================================================
 int main(int argc, char** argv) {
-    int steps = 100, subiter = 60;
-    double dt = 1.0e-4;
-    if (argc > 1) { steps = std::atoi(argv[1]); }
-    if (argc > 2) { subiter = std::atoi(argv[2]); }
-    if (argc > 3) { dt = std::atof(argv[3]); }
-    if (argc > 4) { fatime::CFL = std::atof(argv[4]); }
-    if (argc > 5) { g_rans = std::string(argv[5]) == "rans"; }
-    if (argc > 6) {
-        const std::string mode = argv[6];
-        g_trace = mode.find("trace") != std::string::npos;
-        g_laminar = mode.find("laminar") != std::string::npos;
-        cc::scheme = (mode.find("jst") != std::string::npos) ? 'J' : 'R';
-    }
-    // 线程数: 默认 16, 可用第 7 个参数覆盖
-    const int nthreads = argc > 7 ? std::atoi(argv[7]) : 16;
-    // 中间帧输出间隔: 默认 5000 步, 可用第 8 个参数覆盖(0=不输出)
-    g_dump_every = argc > 8 ? std::atoi(argv[8]) : 5000;
+    // 用法: debug [config.json] [steps] [inner] [cfl] [threads] [dump_every]
+    const std::string cfg = argc > 1 ? argv[1] : "config.json";
+    int steps = 10, subiter = 40;
+    if (argc > 2) { steps = std::atoi(argv[2]); }
+    if (argc > 3) { subiter = std::atoi(argv[3]); }
+    const bool cfl_set = argc > 4;
+    const double cfl_arg = cfl_set ? std::atof(argv[4]) : 0.0;
+    const int nthreads = argc > 5 ? std::atoi(argv[5]) : 32;
+    g_dump_every = argc > 6 ? std::atoi(argv[6]) : 0;
 #ifdef _OPENMP
     omp_set_num_threads(nthreads);
 #endif
-    printf("============== 圆柱绕流 %s%s 检验台 ==============\n", g_rans ? "RANS" : "URANS",
-           g_laminar ? "/层流(湍流模型已冻结)" : "");
-    printf("步=%d  子迭代=%d  物理时间步 dt=%.3e s  OpenMP线程=%d  中间输出间隔=%d  格式=%s\n",
-           steps, subiter, dt, nthreads, g_dump_every, cc::scheme == 'J' ? "JST" : "Roe");
     std::error_code mkdir_error;
     std::filesystem::create_directories(OUTDIR, mkdir_error);
     if (mkdir_error) {
@@ -1846,30 +1703,32 @@ int main(int argc, char** argv) {
         return 1;
     }
     g_summary = out_open("summary.txt");
-    if (g_summary == nullptr || !config::load("config.json")) { return 1; }
+    if (g_summary == nullptr || !config::load(cfg.c_str())) { return 1; }
+    if (cfl_set) { fatime::CFL = cfl_arg; }
+    const double dt = urans::dt;
+    const double D_ref = 0.229999;
+    const double a_inf = std::sqrt(cc::gamma * cc::R * FAR_DEFINE.T);
+    const double U_inf = std::hypot(FAR_DEFINE.u, FAR_DEFINE.v);
+    const double alpha_deg = std::atan2(FAR_DEFINE.v, FAR_DEFINE.u) * 180.0 / std::acos(-1.0);
+    const double rho_inf = FAR_DEFINE.p / (cc::R * FAR_DEFINE.T);
+    g_re = rho_inf * U_inf * D_ref / sutherland::dynamic_viscosity(FAR_DEFINE.T);
+    printf("============== 双时间步隐式求解检验台 ==============\n");
+    printf("配置=%s\n", cfg.c_str());
+    printf("步=%d  内迭代上限=%d  dt=%.3e s  CFL=%.1f  inner_tol=%.1e  线程=%d  输出间隔=%d\n",
+           steps, subiter, dt, fatime::CFL, urans::inner_tol, nthreads, g_dump_every);
+    printf("工况: Ma=%.3f  alpha=%.3f deg  T=%.2f K  p=%.6e Pa  Re_c=%.3e\n", U_inf / a_inf,
+           alpha_deg, FAR_DEFINE.T, FAR_DEFINE.p, g_re);
+    printf("网格=%s\n", cc::meshpath.c_str());
     if (g_trace) {
         g_trace_fp = out_open("miubl_trace.txt");
         if (g_trace_fp != nullptr) {
             fprintf(g_trace_fp, "# ν̃ 追踪: 每步记录 ν̃ 最大格的 SA 方程逐项分解\n");
         }
     }
-    if (argc > 4) { fatime::CFL = std::atof(argv[4]); }
-    printf("CFL=%.3f\n", fatime::CFL);
-    // Re 由远场密度定, 网格固定 D=1; 第 9 个参数可改 Re
-    const double D = 1.0;
-    const double Re_target = argc > 9 ? std::atof(argv[9]) : 60.0;
-    g_re = Re_target;
-    const double a_inf = std::sqrt(cc::gamma * cc::R * FAR_DEFINE.T);
-    const double U_inf = std::hypot(FAR_DEFINE.u, FAR_DEFINE.v);
-    const double mu_inf = sutherland::dynamic_viscosity(FAR_DEFINE.T);
-    const double p_target = Re_target * mu_inf * cc::R * FAR_DEFINE.T / (U_inf * D);
-    printf("工况: D=%.3f m  Ma=%.3f  T=%.2f K  p=%.6e Pa (Re=%.0f)\n", D, U_inf / a_inf,
-           FAR_DEFINE.T, p_target, Re_target);
-    FAR_DEFINE.p = p_target;
-    g_scale[0] = p_target / (cc::R * FAR_DEFINE.T);
-    g_scale[1] = g_scale[0] * U_inf;
+    g_scale[0] = rho_inf;
+    g_scale[1] = rho_inf * U_inf;
     g_scale[2] = g_scale[1];
-    g_scale[3] = g_scale[0] * cc::Cp * FAR_DEFINE.T;
+    g_scale[3] = rho_inf * cc::Cp * FAR_DEFINE.T;
 
     if (!readmesh(cc::meshpath.c_str()) || !geometrymain()) {
         printf("网格或几何失败\n");
@@ -1919,34 +1778,33 @@ int main(int argc, char** argv) {
     const bool ok10 = check_10_source();
     check_end(ok10, g_info);
 
-    check_begin(11, "一次 RK 子步");
-    const bool ok11 = check_11_one_rk(dt);
+    check_begin(11, "远场边界 BC 与无粘通量");
+    const bool ok11 = check_11_farfield();
     check_end(ok11, g_info);
-    check_begin(12, "三次 RK 构成的一组伪时间步");
-    const bool ok12 = check_12_three_rk(dt);
+    check_begin(12, "远场 FD Jacobian 与隐式对角块");
+    const bool ok12 = check_12_farjac(dt);
     check_end(ok12, g_info);
+
+    // URANS 初场: 用定常隐式迭代把流场推到收敛(与 main.cpp 的 steady 阶段同流程)
+    const int preheat = std::min(urans::steady_iters, 400);
+    if (preheat > 0) {
+        printf("定常预热 %d 步 ...\n", preheat);
+        fflush(stdout);
+        for (int it = 1; it <= preheat; it++) {
+            const double cfl =
+                std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0);
+            const double r = implicit_step(0.0, cfl);
+            if (it % 100 == 0 || it == preheat) {
+                printf("  steady %4d  cfl %5.1f  res %.4e\n", it, cfl, r);
+                fflush(stdout);
+            }
+        }
+    }
     check_begin(13, g_rans ? "一个稳态伪时间步" : "一个物理时间步");
     const bool ok13 = check_13_step(dt, subiter);
     check_end(ok13, g_info);
-    check_begin(14, fmt(g_rans ? "短跑 %d 次稳态迭代" : "短跑 %d 个物理步", steps).c_str());
-    // 对称网格上反对称模态只能从舍入误差长起, 这里给个 2% 的局部反对称种子
-    if (!g_rans) {
-        const double amp = 0.02 * U_inf;
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < cc::cell_num; c++) {
-            cc::cell_class& cell = cc::CellList[c];
-            const double r = std::hypot(cell.center.x, cell.center.y);
-            if (r > 0.5 && r < 3.0) {
-                // 绕 x 轴的涡量团: u 奇 y 偶, 正是带升力的脱涡模态, 且无散
-                const double w = amp * std::exp(-r * r / 4.0);
-                cell.phy.u += -w * cell.center.y;
-                cell.phy.v += w * cell.center.x;
-                cell.form_conservative();
-            }
-        }
-        refresh_field();
-    }
-    const bool ok14 = check_14_run(dt, subiter, steps);
+    check_begin(14, fmt("%d 组 CFL 的标定(%d 步)", 5, steps).c_str());
+    const bool ok14 = check_14_calib(dt, steps);
     check_end(ok14, g_info);
     check_begin(15, "输出流场(供 python 画云图)");
     const bool ok15 = check_15_dump(steps, dt);

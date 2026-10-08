@@ -4,20 +4,24 @@
 #include "config.hpp"
 #include "dissipation.hpp"
 #include <cmath>
+#include <utility>
 
 /*
 Roe 通量对方向是有要求的,也就是说必须保证面上的法向量是L→R,本代码中要求L→R是face.nei[0]→[1]
 也就是说在interpolate中已经要求0和1必须完全匹配.face.outer记载了face.nor和face.nei[0]→[1]的方向关系
+自2.3.1起,将放弃标量耗散的方法,改用Roe特征矩阵jacobi进行矢量耗散
 */
 
-// 无粘通量
+// JST无粘通量
 void convect_JST(cc::face_class& face);
 // 汇总单元各面的无粘和黏性通量
 void assemble_flux(cc::cell_class& cell, char fluxtype = 'R');
 // Roe无粘通量
-#include <utility>
-
 void convect_ROE(cc::face_class& face);
+// 形成一对无粘Jacobi
+std::pair<cc::mat5,cc::mat5> form_pfgpw_convect(const cc::cell_class& cell);
+// 对角线上的Roe耗散
+cc::mat5 roe_abs_n(const cc::face_class& face);
 
 inline void convect_JST(cc::face_class& face) {
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v;
@@ -49,7 +53,6 @@ inline std::pair<cc::mat5,cc::mat5> form_pfgpw_convect(const cc::cell_class& cel
     return std::pair<cc::mat5,cc::mat5>(pfpw,pgpw);
 }
 
-// Roe 耗散矩阵 |A_n| (带面长, 含熵修正)
 inline cc::mat5 roe_abs_n(const cc::face_class& face){
     const cc::vecp& L = face.phynei[0];
     const cc::vecp& R = face.phynei[1];
@@ -107,7 +110,7 @@ inline void convect_ROE(cc::face_class& face) {
     const double Hbl = (sl * Hl + sh * Hh) / (sl + sh);
     double abl = std::sqrt((cc::gamma - 1) * (Hbl - 0.5 * (ubl * ubl + vbl * vbl)));
     double length = std::sqrt(face.nor.x * face.nor.x + face.nor.y * face.nor.y);
-    // 边界面 nei[0] 可能为空, 此时 outer 仍是默认值, 必须现场判向
+    // 补充一次判断外法向的步骤(有必要)
     const double sign = face.nei[0] != nullptr
                             ? (cc::dot(face.nor, face.mid - face.nei[0]->center) > 0 ? 1.0 : -1.0)
                             : (cc::dot(face.nor, face.nei[1]->center - face.mid) > 0 ? 1.0 : -1.0);
@@ -141,7 +144,7 @@ inline void convect_ROE(cc::face_class& face) {
     const cc::vec4 FR = {R.rho * unh, R.rho * R.u * unh + Ro.p * nx, R.rho * R.v * unh + Ro.p * ny,
                          unh * (R.rho * Ro.e + Ro.p)};
 
-    // 形成面上对流通量(最后乘面长)
+    // 形成面上对流通量(已乘面长)
     face.convect = 0.5 * (FL + FR);
     for (int i = 0; i < 4; i++) {
         face.convect -= 0.5 * lambda[i] * alpha[i] * tz[i];

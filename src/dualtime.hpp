@@ -271,8 +271,12 @@ inline void sa_step(double dt, double cfl) {
         block_sgs(relax);
     }
 #pragma omp parallel for schedule(static)
-    for (int c = 0; c < N; c++)
-        icell(c).tur.miubl = std::max(0.0, icell(c).tur.miubl + dnu[c]);
+    for (int c = 0; c < N; c++) {
+        double dn = dnu[c];
+        // 只丢非有限值; 不能做幅值限幅, 否则 ν̃ 从 0 起长时会被钉死
+        if (!std::isfinite(dn)) { dn = 0.0; }
+        icell(c).tur.miubl = std::max(0.0, icell(c).tur.miubl + dn);
+    }
 }
 
 } // namespace dual

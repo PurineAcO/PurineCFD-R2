@@ -52,9 +52,18 @@ static void write_wall_cp(FILE* fp, int step, double t) {
 
 static bool field_valid() {
     for (const cc::cell_class& c : cc::CellList) {
-        if (!std::isfinite(c.conser.c) || c.conser.c <= 0.0 || !std::isfinite(c.conser.e) ||
-            !std::isfinite(c.tur.miubl)) {
+        const double ke =
+            0.5 * (c.conser.x * c.conser.x + c.conser.y * c.conser.y) / c.conser.c;
+        const double T = (c.conser.e - ke) / (c.conser.c * cc::Cv);
+        const bool bad = !std::isfinite(c.conser.c) || c.conser.c <= 0.0 ||
+                         !std::isfinite(c.conser.e) || !std::isfinite(c.tur.miubl) ||
+                         !(T > 0.0) || !std::isfinite(T);
+        if (bad) {
             printf("Error: invalid state in cell #%d (%g,%g)\n", c.index, c.center.x, c.center.y);
+            printf("       rho=%.8g rhoU=%.8g rhoV=%.8g E=%.8g ke=%.8g T=%.8g nu=%.8g "
+                   "vol=%.6g s=%d n=%d\n",
+                   c.conser.c, c.conser.x, c.conser.y, c.conser.e, ke, T, c.tur.miubl, c.vol, c.s,
+                   c.n);
             return false;
         }
     }
@@ -120,13 +129,13 @@ int main(int argc, char** argv) {
             std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0);
         const double r = flow_step_select(0.0, cfl);
         dual::sa_step(0.0, cfl);
+        if (!field_valid()) return 1;
         if (it % config::conv_step == 0 || it == urans::steady_iters) {
             wall_forces(cl, cd);
-            printf("steady %6d  cfl %6.1f  res %.4e  Cl %.5f  Cd %.5f  [%.0fs]\n", it, cfl, r, cl,
-                   cd, elapsed());
+            printf("steady %6d  cfl %6.1f  res %.4e  Cl %.5f  Cd %.5f  clip %5d  [%.0fs]\n", it, cfl,
+                   r, cl, cd, dual_full::n_clip, elapsed());
             fprintf(hist, "S,%d,0,1,%.6e,%.6e,%.8f,%.8f\n", it, r, r, cl, cd);
             fflush(stdout);
-            if (!field_valid()) return 1;
         }
     }
     if (urans::steady_iters > 0) {
@@ -156,11 +165,15 @@ int main(int argc, char** argv) {
         wall_forces(cl, cd);
         fprintf(hist, "U,%d,%.8e,%d,%.6e,%.6e,%.8f,%.8f\n", n, t, k, r0, r, cl, cd);
         fflush(hist);
+        if (!field_valid()) {
+            printf("       step=%d t=%.6e inner=%d res0=%.6e res=%.6e\n", n, t, k, r0, r);
+            return 1;
+        }
         if (n % config::conv_step == 0 || n == 1) {
-            printf("step %6d  t %.5e  inner %2d  res %.3e -> %.3e  Cl %.5f  Cd %.5f  [%.0fs]\n", n,
-                   t, k, r0, r, cl, cd, elapsed());
+            printf("step %6d  t %.5e  inner %2d  res %.3e -> %.3e  Cl %.5f  Cd %.5f  "
+                   "clip %5d  [%.0fs]\n",
+                   n, t, k, r0, r, cl, cd, dual_full::n_clip, elapsed());
             fflush(stdout);
-            if (!field_valid()) return 1;
         }
         if (wall && n % urans::wall_interval == 0) write_wall_cp(wall, n, t);
         if (n % config::dump_step == 0) {

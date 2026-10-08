@@ -45,8 +45,23 @@ double _fv2(double chi);
 double _g(double r);
 // 破坏项控制函数
 double _fw(double g);
+// 粘性通量Jacobi矩阵前体B,冻结梯度
+std::pair<cc::mat5, cc::mat5> form_pfpgq_diffusion(const cc::face_class& face);
+// 将粘性通量Jacobi矩阵前体B转换成B
+cc::mat5 form_pfpw_from_pfpgq(const cc::mat5& J,const cc::face_class& face);
+// 粘性通量Jacobi矩阵T,冻结非梯度量
+cc::mat5 diffusion_grad_jac(const cc::face_class& face,double dn);
 
 } // namespace SA
+
+namespace sutherland {
+
+// sutherland粘度对温度的导数
+double _MUT(double mu,double T);
+
+} // namespace sutherland
+
+
 
 inline double SA::_chi(double rho, double mu, double miubl) {
     return rho * (miubl > 0.0 ? miubl : 0.0) / mu;
@@ -103,12 +118,11 @@ inline double SA::source_SA(const cc::cell_class& cell) {
     return production - destruction + gradient_source - compressible;
 }
 
-inline double _MUT(double mu,double T){
+inline double sutherland::_MUT(double mu,double T){
     return mu*(T+3*sutherland::Ts)/(2*T*(T+sutherland::Ts));
 }
 
-// 粘性通量对基本量的 Jacobi (梯度冻结), 可传 cell 或 face
-inline std::pair<cc::mat5, cc::mat5> form_pfpgq_diffusion(const cc::face_class& face){
+inline std::pair<cc::mat5, cc::mat5> SA::form_pfpgq_diffusion(const cc::face_class& face){
     const cc::vecgrad& g = face.phgrad;
     const cc::vec2& bg = face.tur.miublgrad;
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v;
@@ -120,7 +134,7 @@ inline std::pair<cc::mat5, cc::mat5> form_pfpgq_diffusion(const cc::face_class& 
     const double B2 = A2*D, B3 = A3*D, B4 = A4*D;
     const double mueff = face.otphy.mu + rho*fv1*face.tur.miubl;
     const double tauxx = mueff*A2, tauxy = mueff*A3, tauyy = mueff*A4;
-    const double MUT = _MUT(face.otphy.mu,face.phy.T);
+    const double MUT = sutherland::_MUT(face.otphy.mu,face.phy.T);
     const double E1 = bg.x*SA::inv_sigma, E2 = bg.y*SA::inv_sigma;
     cc::vec5 c1(0,0,0,0,0);
     cc::vec5 x1(B2*face.tur.miubl,0,0,MUT*A2,B2*rho);
@@ -141,8 +155,7 @@ inline std::pair<cc::mat5, cc::mat5> form_pfpgq_diffusion(const cc::face_class& 
     return std::pair<cc::mat5,cc::mat5>(F,G);
 }
 
-// 把基本量 Jacobi 右乘 ∂Q/∂W, 换成守恒量 Jacobi
-inline cc::mat5 form_pfpw_from_pfpgq(const cc::mat5& J,const cc::face_class& face){
+inline cc::mat5 SA::form_pfpw_from_pfpgq(const cc::mat5& J,const cc::face_class& face){
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v, T = face.phy.T, nu = face.tur.miubl;
     const double Cv = cc::Cv, ke = (u*u+v*v)/(2*Cv*rho);
     const cc::vec5 n_rho(1,0,0,0,0);
@@ -158,8 +171,7 @@ inline cc::mat5 form_pfpw_from_pfpgq(const cc::mat5& J,const cc::face_class& fac
     return M;
 }
 
-// 粘性通量对梯度的响应矩阵 T_f (含 1/dn; 单位法向的二次型再乘面长 len)
-inline cc::mat5 diffusion_grad_jac(const cc::face_class& face,double dn){
+inline cc::mat5 SA::diffusion_grad_jac(const cc::face_class& face,double dn){
     const double len = face.len, nx = face.nor.x/len, ny = face.nor.y/len;
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v, nu = face.tur.miubl, T = face.phy.T;
     const double mu = face.otphy.mu, mut = std::max(face.tur.mueff-mu,0.0), m = face.tur.mueff;

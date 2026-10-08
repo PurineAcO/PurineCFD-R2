@@ -25,7 +25,7 @@ python3 cases/cylinder/generate_case.py
 uv run ruff check cases tests
 uv run ruff format --check cases tests
 clang-format --dry-run --Werror src/*.hpp src/*.cpp
-bash tests/fdb.sh 400 60   # 构建 debug 检验台并跑圆柱, 结果写到 debugres/
+bash tests/fdb.sh cases/oat15a/urans_m073a31_re33e6.json 10 40   # 构建 debug 检验台并跑 OAT15A 3.1° 标定
 ```
 
 构建启用严格编译警告（`-Wall -Wextra -Wpedantic -Werror`，未使用参数/变量仍为警告）；`-DPURINE_SANITIZE=ON` 启用 ASan/UBSan，`-DPURINE_NATIVE=ON` 加 `-march=native`。
@@ -43,7 +43,10 @@ bash tests/fdb.sh 400 60   # 构建 debug 检验台并跑圆柱, 结果写到 de
 | 时间推进 | [dualtime.hpp](src/dualtime.hpp)、[dualtime_full.hpp](src/dualtime_full.hpp) | 双时间步：BDF1 外迭代与伪时间内迭代；块 Jacobi 组装与对称 Gauss-Seidel 求解 |
 | 驱动与输出 | [main.cpp](src/main.cpp)、[io.hpp](src/io.hpp) | 配置解析、主循环、日志与流场输出 |
 
-`timarch.hpp`（显式时间推进）、`residual.hpp`、`parallel.hpp` 目前不被主程序引用：第一个由 `tests/debug.cpp` 检验台使用，后两个为保留模块。
+`timarch.hpp`（显式时间推进）、`residual.hpp`、`parallel.hpp` 目前不被引用，为保留模块。
+`tests/debug.cpp` 是 OAT15A 的隐式求解检验台，与主程序走同一套双时间步路径（2.3.1 起不再用显式 RK3）：
+逐项检查网格/几何/梯度/通量/SA 源项，再用远场边界的数值微分 Jacobian 对拍，最后按 `cfl × inner`
+标定伪时间参数，输出 `debugres/summary.txt` 与 `debugres/calib.csv`。
 
 ## 数值约定
 
