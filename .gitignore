@@ -28,3 +28,7 @@ readrans.txt
 # 大算例
 cases/naca0012/naca0012_far30.txt
 cases/oat15a/oat15a_sa.txt
+
+# OAT15A 只跟踪一个 URANS 基准配置, 攻角/时间步变体不跟踪(保留在磁盘上供跑算例)
+cases/oat15a/urans_m073a*_re33e6.json
+!cases/oat15a/urans_m073a31_re33e6.json
