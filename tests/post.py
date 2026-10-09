@@ -788,8 +788,9 @@ if a.readme:
   if P['phase'] == 'U':
     num.append(f'物理时间步 dt = {uv["dt"]:g} s（每抖振周期约 {1 / f0 / uv["dt"]:.0f} 步）')
     num.append(f'物理步数 {sv["max_steps"]}，t_end = {uv["dt"] * sv["max_steps"]:.4f} s')
-    num.append(f'内迭代最多 {uv["inner"]} 次（tol {uv["inner_tol"]:g}），伪时间 CFL = '
-               f'{sv["cfl"]:g}，sweeps = {uv["sweeps"]}')
+    num.append(f'内迭代最多 {uv["inner"]} 次'
+               + (f'（tol {uv["inner_tol"]:g}）' if 'inner_tol' in uv else '')
+               + f'，伪时间 CFL = {sv["cfl"]:g}，sweeps = {uv.get("sweeps", 4)}')
     num.append(f'定常预热 {uv["steady_iters"]} 步（CFL 2 → {uv["steady_cfl"]:g}）')
   else:
     num.append(f'定常迭代 {uv.get("steady_iters")} 步（CFL 2 → {uv.get("steady_cfl"):g}），'
