@@ -48,7 +48,7 @@ inline void local_timestep(cc::cell_class& cell) {
 
 inline void one_rans(double dt, bool urans) {
 #ifdef _OPENMP
-    omp_set_num_threads(16);
+    omp_set_num_threads(cc::threads);
 #endif
 // 复制当前伪时间步的守恒量
 #pragma omp parallel for schedule(static)

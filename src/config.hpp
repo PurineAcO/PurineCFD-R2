@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <stdexcept>
 #include <string>
 
 #define vecfor(cnt) for (int i = 0; i < cnt; i++)
@@ -312,4 +313,56 @@ namespace cc {
             for(int r=0;r<5;r++) mat5_row(m,r) = vec5(a[r][0],a[r][1],a[r][2],a[r][3],a[r][4]);
             return m;
         }
+}
+
+namespace cc {
+    struct mat4{
+        double a[4][4] = {};
+        // 使用Gauss消元法求解
+        vec4 solve4(vec4 b);
+        void clear();
+        mat4& operator+=(const mat4& o){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]+=o.a[r][c];}return *this;}
+        mat4& operator*=(const double k){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]*=k;}return *this;}
+    };
+    // 由mat5形成无粘切片
+    inline mat4 slice4(const mat5& m){
+        mat4 out;
+        for(int r=0;r<4;r++) for(int c=0;c<4;c++) out.a[r][c] = mat5_at(m,r,c);
+        return out;
+    }
+    inline mat4 operator+(mat4 a,const mat4& b){return a+=b;}
+    inline mat4 operator*(const double k,mat4 A){return A*=k;}
+    inline vec4 mat4::solve4(vec4 b){
+        double r[4] = {b.c,b.x,b.y,b.e};
+        for(int i=0;i<4;i++){
+            int p=i;
+            for(int k=i+1;k<4;k++) if(std::abs(a[k][i])>std::abs(a[p][i])) p=k;
+            if(p!=i){
+                for(int c=0;c<4;c++) std::swap(a[i][c],a[p][c]);
+                std::swap(r[i],r[p]);
+            }
+            if(std::abs(a[i][i])<1e-14) a[i][i] = a[i][i] >= 0.0 ? 1e-14 : -1e-14;
+            for(int k=i+1;k<4;k++){
+                const double w = a[k][i]/a[i][i];
+                for(int c=i;c<4;c++) a[k][c] -= w*a[i][c];
+                r[k] -= w*r[i];
+            }
+        }
+        for(int i=3;i>=0;i--){
+            for(int c=i+1;c<4;c++) r[i] -= a[i][c]*r[c];
+            r[i] /= a[i][i];
+        }
+        return cc::vec4(r[0],r[1],r[2],r[3]);
+    }
+    inline void mat4::clear(){
+        for(int i=0;i<4;i++) for(int j=0;j<4;j++) a[i][j]=0;
+    }
+    inline vec4 matpro(mat4 A,vec4 b){
+        vec4 res;
+        res.c = A.a[0][0] * b.c + A.a[0][1] * b.c + A.a[0][2] * b.c + A.a[0][3] * b.c;
+        res.x = A.a[1][0] * b.c + A.a[1][1] * b.c + A.a[1][2] * b.c + A.a[1][3] * b.c;
+        res.y = A.a[2][0] * b.c + A.a[2][1] * b.c + A.a[2][2] * b.c + A.a[2][3] * b.c;
+        res.e = A.a[3][0] * b.c + A.a[3][1] * b.c + A.a[3][2] * b.c + A.a[3][3] * b.c;
+        return res;
+    }
 }
