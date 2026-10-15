@@ -11,24 +11,10 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-
-/*
-双时间步URANS, 做法与Fluent密度基隐式求解器相同:
-  外迭代(物理时间)用一阶后向欧拉:  V(Q^{n+1}-Q^n)/Δt + R(Q^{n+1}) = 0
-  内迭代(伪时间)隐式推进, 每步解线性方程
-      [V/Δτ + V/Δt + ∂R/∂Q] ΔQ = -[R(Q^k) + V(Q^k-Q^n)/Δt]
-  ∂R/∂Q 用一阶Rusanov通量的近似Jacobian:
-      对角  0.5*Σλ_f (标量)
-      邻居j 0.5*(F(Q_j+ΔQ_j)-F(Q_j))·n - 0.5*λ_f*ΔQ_j
-  λ_f 为面上对流+黏性谱半径. 线性方程用对称Gauss-Seidel扫描求解,
-  线程按单元编号分块, 块内用最新值, 块间用上一遍的值, 结果与线程调度无关.
-  SA方程在流动方程之后单独求解(与Fluent一致), 同样BDF1+隐式伪时间,
-  对流项一阶迎风, 扩散项两点格式, 破坏项线性化后放进对角.
-  dt<=0时去掉物理时间项, 即隐式定常迭代.
-*/
 
 namespace dual {
 // 计算整场残差 R = convect - visflux (单元净流出通量)

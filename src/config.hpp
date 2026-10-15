@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cmath>
-#include <stdexcept>
 #include <string>
 
 #define vecfor(cnt) for (int i = 0; i < cnt; i++)
@@ -324,33 +323,38 @@ namespace cc {
         mat4& operator+=(const mat4& o){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]+=o.a[r][c];}return *this;}
         mat4& operator*=(const double k){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]*=k;}return *this;}
     };
+
     // 由mat5形成无粘切片
     inline mat4 slice4(const mat5& m){
         mat4 out;
         for(int r=0;r<4;r++) for(int c=0;c<4;c++) out.a[r][c] = mat5_at(m,r,c);
         return out;
     }
+    inline cc::mat4 eyes = []{ cc::mat4 I; for(int r=0;r<4;r++) I.a[r][r] = 1.0; return I; }();
+    inline cc::mat4 zeros = []{ cc::mat4 O; for(int r=0;r<4;r++) O.clear(); return O; }();
     inline mat4 operator+(mat4 a,const mat4& b){return a+=b;}
     inline mat4 operator*(const double k,mat4 A){return A*=k;}
     inline vec4 mat4::solve4(vec4 b){
+        double m[4][4];
+        for(int i=0;i<4;i++) for(int j=0;j<4;j++) m[i][j] = a[i][j];
         double r[4] = {b.c,b.x,b.y,b.e};
         for(int i=0;i<4;i++){
             int p=i;
-            for(int k=i+1;k<4;k++) if(std::abs(a[k][i])>std::abs(a[p][i])) p=k;
+            for(int k=i+1;k<4;k++) if(std::abs(m[k][i])>std::abs(m[p][i])) p=k;
             if(p!=i){
-                for(int c=0;c<4;c++) std::swap(a[i][c],a[p][c]);
+                for(int c=0;c<4;c++) std::swap(m[i][c],m[p][c]);
                 std::swap(r[i],r[p]);
             }
-            if(std::abs(a[i][i])<1e-14) a[i][i] = a[i][i] >= 0.0 ? 1e-14 : -1e-14;
+            if(std::abs(m[i][i])<1e-14) m[i][i] = m[i][i] >= 0.0 ? 1e-14 : -1e-14;
             for(int k=i+1;k<4;k++){
-                const double w = a[k][i]/a[i][i];
-                for(int c=i;c<4;c++) a[k][c] -= w*a[i][c];
+                const double w = m[k][i]/m[i][i];
+                for(int c=i;c<4;c++) m[k][c] -= w*m[i][c];
                 r[k] -= w*r[i];
             }
         }
         for(int i=3;i>=0;i--){
-            for(int c=i+1;c<4;c++) r[i] -= a[i][c]*r[c];
-            r[i] /= a[i][i];
+            for(int c=i+1;c<4;c++) r[i] -= m[i][c]*r[c];
+            r[i] /= m[i][i];
         }
         return cc::vec4(r[0],r[1],r[2],r[3]);
     }
@@ -359,10 +363,10 @@ namespace cc {
     }
     inline vec4 matpro(mat4 A,vec4 b){
         vec4 res;
-        res.c = A.a[0][0] * b.c + A.a[0][1] * b.c + A.a[0][2] * b.c + A.a[0][3] * b.c;
-        res.x = A.a[1][0] * b.c + A.a[1][1] * b.c + A.a[1][2] * b.c + A.a[1][3] * b.c;
-        res.y = A.a[2][0] * b.c + A.a[2][1] * b.c + A.a[2][2] * b.c + A.a[2][3] * b.c;
-        res.e = A.a[3][0] * b.c + A.a[3][1] * b.c + A.a[3][2] * b.c + A.a[3][3] * b.c;
+        res.c = A.a[0][0] * b.c + A.a[0][1] * b.x + A.a[0][2] * b.y + A.a[0][3] * b.e;
+        res.x = A.a[1][0] * b.c + A.a[1][1] * b.x + A.a[1][2] * b.y + A.a[1][3] * b.e;
+        res.y = A.a[2][0] * b.c + A.a[2][1] * b.x + A.a[2][2] * b.y + A.a[2][3] * b.e;
+        res.e = A.a[3][0] * b.c + A.a[3][1] * b.x + A.a[3][2] * b.y + A.a[3][3] * b.e;
         return res;
     }
 }

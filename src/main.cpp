@@ -50,7 +50,32 @@ static void write_wall_cp(FILE* fp, int step, double t) {
     fflush(fp);
 }
 
-static bool field_valid() {
+static std::vector<cc::vec4> snap_q;
+static std::vector<double> snap_nu;
+static double cfl_scale = 1.0;
+
+static void save_state() {
+    if ((int)snap_q.size() != cc::cell_num) {
+        snap_q.resize(cc::cell_num);
+        snap_nu.resize(cc::cell_num);
+    }
+    for (int i = 0; i < cc::cell_num; i++) {
+        snap_q[i] = icell(i).conser;
+        snap_nu[i] = icell(i).tur.miubl;
+    }
+}
+
+static void restore_state() {
+    for (int i = 0; i < cc::cell_num; i++) {
+        icell(i).conser = snap_q[i];
+        icell(i).tur.miubl = snap_nu[i];
+        icell(i).prim();
+        icell(i).form_otherphy();
+    }
+}
+
+static int bad_cells() {
+    int nbad = 0;
     for (const cc::cell_class& c : cc::CellList) {
         const double ke =
             0.5 * (c.conser.x * c.conser.x + c.conser.y * c.conser.y) / c.conser.c;
@@ -59,15 +84,13 @@ static bool field_valid() {
                          !std::isfinite(c.conser.e) || !std::isfinite(c.tur.miubl) ||
                          !(T > 0.0) || !std::isfinite(T);
         if (bad) {
-            printf("Error: invalid state in cell #%d (%g,%g)\n", c.index, c.center.x, c.center.y);
-            printf("       rho=%.8g rhoU=%.8g rhoV=%.8g E=%.8g ke=%.8g T=%.8g nu=%.8g "
-                   "vol=%.6g s=%d n=%d\n",
-                   c.conser.c, c.conser.x, c.conser.y, c.conser.e, ke, T, c.tur.miubl, c.vol, c.s,
-                   c.n);
-            return false;
+            if (nbad < 100)
+                printf("  bad cell #%d (%.6g, %.6g)\n", c.index, c.center.x, c.center.y);
+            ++nbad;
         }
     }
-    return true;
+    if (nbad > 100) printf("  ... 共 %d 个坏单元\n", nbad);
+    return nbad;
 }
 
 // 初场叠加绕原点的高斯涡, 打破对称性使圆柱尽快起振
@@ -124,12 +147,26 @@ int main(int argc, char** argv) {
     double cl = 0.0, cd = 0.0;
 
     // 定常隐式迭代给URANS初场, CFL在前200步从2线性增大到steady_cfl
-    for (int it = 1; it <= urans::steady_iters; it++) {
+    for (int it = 1; it <= urans::steady_iters;) {
         const double cfl =
-            std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0);
+            std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0) * cfl_scale;
+        save_state();
         const double r = flow_step_select(0.0, cfl);
         dual::sa_step(0.0, cfl);
-        if (!field_valid()) return 1;
+        const int nb = bad_cells();
+        if (nb > 0) {
+            printf("steady %6d 发散: %d 个坏单元, 回退上一流场, CFL x%.4f -> x%.4f\n", it, nb,
+                   cfl_scale, cfl_scale * 0.5);
+            fflush(stdout);
+            restore_state();
+            cfl_scale *= 0.5;
+            if (cfl_scale < 1e-3) {
+                printf("CFL 已降到下限仍不收敛, 放弃\n");
+                return 1;
+            }
+            continue;
+        }
+        if (cfl_scale < 1.0) cfl_scale = std::min(1.0, cfl_scale * 1.05);
         if (it % config::conv_step == 0 || it == urans::steady_iters) {
             wall_forces(cl, cd);
             printf("steady %6d  cfl %6.1f  res %.4e  Cl %.5f  Cd %.5f  clip %5d  [%.0fs]\n", it, cfl,
@@ -137,6 +174,7 @@ int main(int argc, char** argv) {
             fprintf(hist, "S,%d,0,1,%.6e,%.6e,%.8f,%.8f\n", it, r, r, cl, cd);
             fflush(stdout);
         }
+        ++it;
     }
     if (urans::steady_iters > 0) {
         allcell icell(i).prim();
@@ -151,24 +189,41 @@ int main(int argc, char** argv) {
             icell(i).lastconser = icell(i).conser;
             icell(i).tur.miubl_former = icell(i).tur.miubl;
         }
+        const double cfl_nom = fatime::CFL;
         double r0 = 0.0, r = 0.0;
         int k = 0;
-        while (k < urans::inner) {
-            r = flow_step_select(urans::dt, fatime::CFL);
-            dual::sa_step(urans::dt, fatime::CFL);
-            if (++k == 1)
-                r0 = r;
-            else if (r < urans::inner_tol * r0)
-                break;
+        for (;;) {
+            save_state();
+            fatime::CFL = cfl_nom * cfl_scale;
+            r0 = 0.0;
+            r = 0.0;
+            k = 0;
+            while (k < urans::inner) {
+                r = flow_step_select(urans::dt, fatime::CFL);
+                dual::sa_step(urans::dt, fatime::CFL);
+                if (++k == 1)
+                    r0 = r;
+                else if (r < urans::inner_tol * r0)
+                    break;
+            }
+            const int nb = bad_cells();
+            if (nb == 0) break;
+            printf("step %6d 发散: %d 个坏单元, 回退上一流场, CFL x%.4f -> x%.4f\n", n, nb, cfl_scale,
+                   cfl_scale * 0.5);
+            fflush(stdout);
+            restore_state();
+            cfl_scale *= 0.5;
+            if (cfl_scale < 1e-3) {
+                printf("CFL 已降到下限仍不收敛, 放弃\n");
+                return 1;
+            }
         }
+        fatime::CFL = cfl_nom;
+        if (cfl_scale < 1.0) cfl_scale = std::min(1.0, cfl_scale * 1.05);
         t += urans::dt;
         wall_forces(cl, cd);
         fprintf(hist, "U,%d,%.8e,%d,%.6e,%.6e,%.8f,%.8f\n", n, t, k, r0, r, cl, cd);
         fflush(hist);
-        if (!field_valid()) {
-            printf("       step=%d t=%.6e inner=%d res0=%.6e res=%.6e\n", n, t, k, r0, r);
-            return 1;
-        }
         if (n % config::conv_step == 0 || n == 1) {
             printf("step %6d  t %.5e  inner %2d  res %.3e -> %.3e  Cl %.5f  Cd %.5f  "
                    "clip %5d  [%.0fs]\n",

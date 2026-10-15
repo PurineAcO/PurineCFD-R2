@@ -3,6 +3,8 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "dissipation.hpp"
+#include "physic.hpp"
+#include "udf.hpp"
 #include <cmath>
 #include <utility>
 
@@ -22,6 +24,9 @@ void convect_ROE(cc::face_class& face);
 std::pair<cc::mat5,cc::mat5> form_pfgpw_convect(const cc::cell_class& cell);
 // 对角线上的Roe耗散
 cc::mat5 roe_abs_n(const cc::face_class& face);
+// 壁面上的无粘通量
+cc::mat4 wall_convect_jacobi(const cc::face_class* face);
+cc::mat4 far_convect_jacobi(const cc::face_class* face);
 
 inline void convect_JST(cc::face_class& face) {
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v;
@@ -150,4 +155,75 @@ inline void convect_ROE(cc::face_class& face) {
         face.convect -= 0.5 * lambda[i] * alpha[i] * tz[i];
     }
     face.convect = face.convect * length;
+}
+
+inline cc::mat4 wall_convect_jacobi(const cc::face_class* face){
+    cc::mat4 res = cc::zeros;
+    if(face->type != cc::WALL) return res;
+    cc::cell_class* cell = face->nei[0] ? face->nei[0] : face->nei[1];
+    bool s = cc::dot(face->nor,face->mid-cell->center) ? true : false;
+    res.a[1][3] = (cc::gamma-1)*(2*s-1)*face->nor.x;
+    res.a[2][3] = (cc::gamma-1)*(2*s-1)*face->nor.y;
+    return res;
+}
+
+inline cc::mat4 far_convect_jacobi(const cc::face_class* face){
+    cc::mat4 res = cc::zeros;
+    if(face->type != cc::FAR) return res;
+    cc::cell_class* c = cc::boundary_findcell(const_cast<cc::face_class*>(face));
+    cc::face_class* f = const_cast<cc::face_class*>(face);
+    cc::vec2 n1 = f->length1_nor();
+    double nx = n1.x, ny = n1.y;
+    if(nx*(face->mid.x - c->center.x) + ny*(face->mid.y - c->center.y) < 0.0) {
+        nx = -nx; ny = -ny;
+    }
+    const double len = std::hypot(face->nor.x, face->nor.y);
+
+    const double rho = c->phy.rho, u = c->phy.u, v = c->phy.v, p = c->otphy.p;
+    const double a = get_sonic_velocity(c->phy.T);
+    const double rhob = face->phy.rho, pb = face->otphy.p;
+    const double ub = face->phy.u, vb = face->phy.v;
+    const double unb = ub * nx + vb * ny, utb = -ub * ny + vb * nx;
+    const double ab = get_sonic_velocity(face->phy.T);
+    const double Hb = cc::Cp * face->phy.T + 0.5 * (ub * ub + vb * vb);
+
+    const bool inflow = unb < 0.0;
+
+    const double g = cc::gamma, gm1 = cc::gamma - 1.0;
+    const double dpQ[4] = {0.5 * gm1 * (u * u + v * v), -gm1 * u, -gm1 * v, gm1};
+    const double duQ[4] = {-u / rho, 1.0 / rho, 0.0, 0.0};
+    const double dvQ[4] = {-v / rho, 0.0, 1.0 / rho, 0.0};
+    double B[4][4] = {};
+    for(int k = 0; k < 4; k++) {
+        const double dvn = nx * duQ[k] + ny * dvQ[k];
+        const double dvt = -ny * duQ[k] + nx * dvQ[k];
+        const double da = a / (2.0 * p) * dpQ[k] - (k == 0 ? a / (2.0 * rho) : 0.0);
+        B[0][k] = rhob / (2.0 * ab) * dvn + rhob / (gm1 * ab) * da;
+        B[1][k] = 0.5 * dvn + da / gm1;
+        B[2][k] = inflow ? 0.0 : dvt;
+        B[3][k] = g * pb / rhob * B[0][k];
+    }
+    if(!inflow) {
+        const double s_ = p / std::pow(rho, g);
+        for(int k = 0; k < 4; k++) {
+            const double ds = s_ / p * dpQ[k] - (k == 0 ? g * s_ / rho : 0.0);
+            B[0][k] += -rhob / (gm1 * s_) * ds;
+            B[3][k] += pb / s_ * ds;
+        }
+    }
+    const double A[4][4] = {
+        {unb, rhob, 0.0, 0.0},
+        {unb * unb * nx - unb * utb * ny, 2.0 * rhob * unb * nx - rhob * utb * ny,
+         -rhob * unb * ny, nx},
+        {unb * unb * ny + unb * utb * nx, 2.0 * rhob * unb * ny + rhob * utb * nx,
+         rhob * unb * nx, ny},
+        {0.5 * unb * (unb * unb + utb * utb), rhob * Hb + rhob * unb * unb,
+         rhob * unb * utb, g / gm1 * unb}};
+    for(int r = 0; r < 4; r++)
+        for(int q = 0; q < 4; q++) {
+            double s = 0.0;
+            for(int m = 0; m < 4; m++) s += A[r][m] * B[m][q];
+            res.a[r][q] = s * len;
+        }
+    return res;
 }
