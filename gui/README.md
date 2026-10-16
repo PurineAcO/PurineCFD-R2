@@ -15,8 +15,20 @@ uv run --with pyside6 python gui/main.py
 
 `gui.sh` 会自己 `cd` 到仓库根目录，并在 `DISPLAY` / `WAYLAND_DISPLAY` 都为空时报错退出。
 
+唯一的依赖是 PySide6，已在根目录 [pyproject.toml](../pyproject.toml) 的 `[dependency-groups]`
+里声明，并被列入 `[tool.uv] default-groups`。所以装环境只要在仓库根目录跑一条：
+
+```bash
+uv sync          # 一次性装齐 post / anim / gui / dev 四组
+./gui.sh
+```
+
+`gui.sh` 用的是 `uv run --with pyside6` 这种临时拉取方式，好处是完全不动 `.venv`、拿到仓库就能跑。
+
 WSLg 已就绪（`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`），Qt 走 Wayland 平台插件，
 窗口直接出现在 Windows 桌面上。实测 `QApplication.platformName() == 'wayland'`。
+WSL 发行版默认不带中文字体，`main.py` 启动时会从 `/mnt/c/Windows/Fonts/` 挂一个（找不到会提示
+`sudo apt install fonts-noto-cjk`），否则界面上的汉字会显示成方框。
 
 ## 界面
 
@@ -24,11 +36,11 @@ WSLg 已就绪（`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`），Qt 走 Wayland 
 
 | 选项卡 | 内容 |
 |---|---|
-| ① 算例 | 算例下拉（cylinder / naca0012 / oat15a）、配置模板下拉（自动扫 `cases/<case>/*.json`，只列含 `io`/`solver`/`farfield` 三节的）、网格文件、结构化邻接表（可留空）、输出目录（开跑后自动填） |
+| ① 算例 | 算例下拉（cylinder / naca0012 / oat15a）、配置模板下拉（第一项恒为「（内置默认）」，其后自动扫 `cases/<case>/*.json`，只列含 `io`/`solver`/`farfield` 三节的）、网格文件、结构化邻接表（可留空）、输出目录（开跑后自动填） |
 | ② 来流 | Ma、Re、静温 T、参考长度 L、攻角 α；下方派生量 μ / a / U∞ / ρ∞ / p∞ / q∞，随输入实时刷新 |
 | ③ 求解 | **表单，不暴露 JSON**。字段由所选模板的 `solver` 段动态生成：整数 → 计数框，小数 → 数字框，布尔 → 勾选框；`urans` 子节单独一组（该模板没有 `urans` 时整组隐藏）。行标签用中文（见 `FIELD_LABELS`），鼠标悬停在控件上显示原始键名 |
 | ④ 后处理 | 曲线/统计 7 项 + 云图面板 9 项（带全选/全不选）、探针位置 x/c、u 色标、历史段 |
-| ⑤ 运行 | 可执行文件路径（记忆上次）、跑完自动后处理（默认勾）、生成配置 JSON、开始运行 / 仅跑后处理 / 停止 |
+| ⑤ 运行 | 可执行文件路径（记忆上次）、跑完自动后处理（默认勾）、生成配置 JSON、自动测线程数、开始运行 / 仅跑后处理 / 停止 |
 | ⑥ 控制台 | 深色等宽，求解器日志 + stderr + 后处理输出 |
 
 进度条与状态行固定在选项卡下方，切到任何页都看得见。点「开始运行」会自动跳到 ⑥。
@@ -41,6 +53,37 @@ WSLg 已就绪（`DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`），Qt 走 Wayland 
 
 配色为浅色卡片风格，样式集中在 `gui/main.py` 的 `STYLE` 常量；
 勾选框与下拉箭头用 `gui/check.svg`、`gui/down.svg` 两个矢量图标（QSS 画不出旋转的勾）。
+
+## 没有模板 JSON 也能开跑
+
+① 页模板下拉的第一项是「（内置默认）」，对应 `gui/runner.py` 的 `builtin_template()`，
+所以 `cases/<case>/` 下即使一个配置文件都没有（或全被 `_` 开头过滤掉），界面依然完整可用：
+
+- `solver` 段用 `DEFAULT_SOLVER` 兜底，键名与取值范围严格按 `src/io.hpp` 的白名单与校验（正整数、
+  `Ma < 1`、`|α| < 90°`……）；`convergence_interval` / `urans.wall_interval` 这类必须为正的键，
+  控件下限已相应提高（`MIN_POSITIVE`），避免滑到 0 生成非法配置
+- `farfield.p` 由 `Ma / Re / T / L` 经 Sutherland 反算得到（默认 `Ma=0.2`、`Re=1000`、`T=300 K`），
+  因此界面里的 Re 显示为 1000 本身，而不是 0
+- `io` 三个路径在写配置时一律被重写成真实 run 目录，模板里留空即可
+- 网格与结构化邻接表需要自己点「选择」，空模板不猜路径
+
+## 自动测线程数
+
+线程数会**改变迭代算子本身**：`src/dualtime.hpp::block_sgs` 按 `lo = cell·tid/nt`、
+`hi = cell·(tid+1)/nt` 切块，核越多块越小、块间耦合越弱，因此「跑得最快」与「残差降得最多」
+未必是同一档。⑤ 页的「自动测线程数」就是为了拿本机数据回答这个问题：
+
+- 候选为 ≤ 本机核心数的 `4/8/16/32/64/96/128`（`runner.thread_candidates()`）
+- 每档写一份临时配置 `cases/<case>/_run_bench_<N>.json`：`max_steps=1`、`dump_interval=1000`、
+  `steady_iters=25`（`runner.BENCH_ITERS`）、`steady_cfl=50`、去掉 `wall_interval`；
+  `threads` 同时写进配置并用 `OMP_NUM_THREADS` 指定（后者优先，见 `src/parallel.hpp`）
+- 所有输出只落在 `run/_bench/`（名字不含数字前缀，不会被当成正式 run 编号），测完即删；
+  **绝不触碰正式 run 目录**
+- 首档重复跑一次作预热并丢弃，排除首次执行的文件缓存建页开销
+- 每档记录壁钟与日志里最后一条 `steady ... res`（`runner.last_steady_res`），结果同时打印到 ⑥
+  和 ⑤ 页按钮下方，并把「最快」的那档写回 ③ 的线程数控件
+
+代价：每档要付一次网格读入 + 25 步定常预热。圆柱（2.4 万单元）约 4 s/档，OAT15A 明显更久。
 
 ## 生成配置 JSON
 

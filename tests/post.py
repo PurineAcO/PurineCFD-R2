@@ -32,21 +32,40 @@ GAMMA, R = 1.4, 287.05
 
 CASES = {
   'cylinder': dict(
-    structured=True, airfoil=False, phase='U', kind='angle',
-    xlabel='$x/D$', ylabel='$y/D$', view=(-5.0, 15.0, -10.0, 10.0), u_positive=False,
+    structured=True,
+    airfoil=False,
+    phase='U',
+    kind='angle',
+    xlabel='$x/D$',
+    ylabel='$y/D$',
+    view=(-5.0, 15.0, -10.0, 10.0),
+    u_positive=False,
     note='圆柱绕流',
   ),
   'naca0012': dict(
-    structured=True, airfoil=True, phase='U', kind='surface',
-    xlabel='$x/c$', ylabel='$y/c$', view=(-0.7, 0.8, -0.35, 0.55), u_positive=True,
+    structured=True,
+    airfoil=True,
+    phase='U',
+    kind='surface',
+    xlabel='$x/c$',
+    ylabel='$y/c$',
+    view=(-0.7, 0.8, -0.35, 0.55),
+    u_positive=True,
     note='NACA0012 URANS',
   ),
   'oat15a': dict(
-    structured=False, airfoil=True, phase='S', kind='surface',
-    xlabel='$x/c$', ylabel='$y/c$', view=(-0.5, 1.5, -0.6, 0.6), u_positive=True,
+    structured=False,
+    airfoil=True,
+    phase='S',
+    kind='surface',
+    xlabel='$x/c$',
+    ylabel='$y/c$',
+    view=(-0.5, 1.5, -0.6, 0.6),
+    u_positive=True,
     note='OAT15A 定常 RANS',
   ),
 }
+
 
 def solver_version():
   """从 CMakeLists.txt 的 project(... VERSION x.y.z) 取版本号."""
@@ -64,18 +83,29 @@ VERSION = solver_version()
 ap = argparse.ArgumentParser()
 ap.add_argument('config')
 ap.add_argument('--case', required=True, choices=list(CASES))
-ap.add_argument('--u-positive', dest='u_pos', action='store_true', default=None,
-                help='u 色标只覆盖正值(负值走 under)')
-ap.add_argument('--u-symmetric', dest='u_pos', action='store_false', default=None,
-                help='u 色标对称')
+ap.add_argument(
+  '--u-positive',
+  dest='u_pos',
+  action='store_true',
+  default=None,
+  help='u 色标只覆盖正值(负值走 under)',
+)
+ap.add_argument(
+  '--u-symmetric', dest='u_pos', action='store_false', default=None, help='u 色标对称'
+)
 ap.add_argument('--panels', default='auto', help="云图面板, 'auto' 或逗号分隔的名字, 'none' 跳过")
 ap.add_argument('--readme', action='store_true', help='生成 README.md')
-ap.add_argument('--phase', default='auto', choices=['auto', 'U', 'S'],
-                help="用哪一段历史: auto 按 U 行数自动判别(定常算例只有 1 行 U)")
+ap.add_argument(
+  '--phase',
+  default='auto',
+  choices=['auto', 'U', 'S'],
+  help='用哪一段历史: auto 按 U 行数自动判别(定常算例只有 1 行 U)',
+)
 ap.add_argument('--out', default=None, help='覆盖输出目录(默认取 config 的 io.field)')
 ap.add_argument('--wall', type=float, default=float('nan'), help='壁钟耗时 [s], 写入 README')
-ap.add_argument('--probe', type=float, default=0.45,
-                help='壁面压力探针位置 x/c (输出 Cp(t) 与 PSD, 默认 0.45)')
+ap.add_argument(
+  '--probe', type=float, default=0.45, help='壁面压力探针位置 x/c (输出 Cp(t) 与 PSD, 默认 0.45)'
+)
 ap.add_argument('--no-history', action='store_true', help='不输出 history.png')
 ap.add_argument('--no-residual', action='store_true', help='不输出 residual.png')
 ap.add_argument('--no-cp-dist', action='store_true', help='不输出 cp_dist.png')
@@ -165,18 +195,19 @@ else:
   sides = [('surface', np.array(order))]
 
 # ============================ 力系数历程 ============================
-h = np.genfromtxt(os.path.join(out, 'history.csv'), delimiter=',', names=True, dtype=None,
-                  encoding=None)
+h = np.genfromtxt(
+  os.path.join(out, 'history.csv'), delimiter=',', names=True, dtype=None, encoding=None
+)
 if a.phase == 'auto':
   # 定常算例的 URANS 段只有 max_steps 次(通常 1 行), URANS 算例则有几百行
   P['phase'] = 'U' if (h['phase'] == 'U').sum() > 20 else 'S'
-  print(f"自动判别 phase = {P['phase']}")
+  print(f'自动判别 phase = {P["phase"]}')
 else:
   P['phase'] = a.phase
 u = h[h['phase'] == P['phase']]
 ok = np.isfinite(u['res']) & np.isfinite(u['Cl']) & np.isfinite(u['Cd'])
 div_step = None
-if not ok.all():                      # 中途发散: 截断到最后一个有效步, 后续统计照常出
+if not ok.all():  # 中途发散: 截断到最后一个有效步, 后续统计照常出
   div_step = int(u['step'][ok][-1])
   print(f'警告: {int((~ok).sum())} 个历史行非有限(求解器发散), 已截断到 step {div_step}')
   u = u[ok]
@@ -256,8 +287,11 @@ else:
 def block_cp(b):
   """wall_cp.dat 的一个 block -> (step, t, 每面 Cp)"""
   rw = b.strip().split('\n')
-  return int(rw[0].split()[0]), float(rw[0].split()[2]), \
-      np.array([r.split() for r in rw[1:]], dtype=float)[:, 2]
+  return (
+    int(rw[0].split()[0]),
+    float(rw[0].split()[2]),
+    np.array([r.split() for r in rw[1:]], dtype=float)[:, 2],
+  )
 
 
 def side_profiles(cpf):
@@ -291,9 +325,10 @@ if P['kind'] == 'surface' and cpn:
     cp_by_step[stp] = (tb, side_profiles(cp_b))
   if P['phase'] == 'U' and len(blocks) > 1:
     st = np.array([block_cp(b)[1] for b in blocks])
-    sx = np.array([shock_x(pr[0][1], pr[0][2]) for pr in
-                   [cp_by_step[block_cp(b)[0]][1] for b in blocks]])
-    sh = sx[len(sx) // 2:]
+    sx = np.array(
+      [shock_x(pr[0][1], pr[0][2]) for pr in [cp_by_step[block_cp(b)[0]][1] for b in blocks]]
+    )
+    sh = sx[len(sx) // 2 :]
     fs, _ = peak_freq(sh, st[1] - st[0])
     shock_lines += [
       f'后半段上表面激波位置 x/c: 均值 {sh.mean():.3f}, 范围 [{sh.min():.3f}, {sh.max():.3f}]',
@@ -301,13 +336,16 @@ if P['kind'] == 'surface' and cpn:
     ]
     # 上表面 Cp 脉动 RMS: 抖振强度指标
     grid = np.linspace(0.0, 1.0, 201)
-    tail = [b for b in blocks][len(blocks) // 2:]
-    series = [np.interp(grid, cp_by_step[block_cp(b)[0]][1][0][1],
-                        cp_by_step[block_cp(b)[0]][1][0][2]) for b in tail]
+    tail = [b for b in blocks][len(blocks) // 2 :]
+    series = [
+      np.interp(grid, cp_by_step[block_cp(b)[0]][1][0][1], cp_by_step[block_cp(b)[0]][1][0][2])
+      for b in tail
+    ]
     rms = np.std(np.array(series), axis=0)
     band = np.where((grid > 0.05) & (grid < 0.95), rms, -1.0)
-    shock_lines.append(f'上表面 Cp 脉动 RMS: 最大 {rms[np.argmax(band)]:.3f} '
-                       f'@ x/c = {grid[np.argmax(band)]:.3f}')
+    shock_lines.append(
+      f'上表面 Cp 脉动 RMS: 最大 {rms[np.argmax(band)]:.3f} @ x/c = {grid[np.argmax(band)]:.3f}'
+    )
   else:
     _, xs, cs = cp_sides[0]
     shock_lines.append(f'上表面激波位置 x/c = {shock_x(xs, cs):.3f}')
@@ -321,8 +359,10 @@ if P['structured']:
 
   def load(fn):
     f = np.loadtxt(fn, skiprows=2)
-    d = {k: f[:, i].reshape(-1, S) for i, k in
-         enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])}
+    d = {
+      k: f[:, i].reshape(-1, S)
+      for i, k in enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])
+    }
     d['Cp'] = (d['p'] - p_inf) / q_inf
 
     def ds(v):
@@ -355,11 +395,6 @@ if P['structured']:
   def outline(ax):
     ax.fill(ww[0], ww[1], color='w', edgecolor='k', linewidth=0.8, zorder=5)
 else:
-  def load(fn):
-    f = np.loadtxt(fn, skiprows=2)
-    return {k: f[:, i] for i, k in
-            enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])}
-
   files = sorted(glob.glob(os.path.join(out, 'step_*.dat')))
   times = dict(zip(u['step'], zip(u['time'], u['Cl']))) if P['phase'] == 'U' else {}
 
@@ -385,8 +420,10 @@ else:
     return o
 
   quads = [q for q in (cell_ring(cells[c]) for c in range(1, CEL + 1)) if q]
-  tri = np.array([[q[0] - 1, q[1] - 1, q[2] - 1] for q in quads]
-                 + [[q[0] - 1, q[2] - 1, q[3] - 1] for q in quads])
+  tri = np.array(
+    [[q[0] - 1, q[1] - 1, q[2] - 1] for q in quads]
+    + [[q[0] - 1, q[2] - 1, q[3] - 1] for q in quads]
+  )
 
   def nodal_avg(cellval):
     s, n = np.zeros(N), np.zeros(N)
@@ -398,8 +435,14 @@ else:
   def nodal_grad(f):
     """三角网线性梯度累加到节点 (矢量化的 2x2 求解)."""
     t0, t1, t2 = tri[:, 0], tri[:, 1], tri[:, 2]
-    x1, y1, x2, y2, x3, y3 = (pts[t0, 0], pts[t0, 1], pts[t1, 0], pts[t1, 1],
-                              pts[t2, 0], pts[t2, 1])
+    x1, y1, x2, y2, x3, y3 = (
+      pts[t0, 0],
+      pts[t0, 1],
+      pts[t1, 0],
+      pts[t1, 1],
+      pts[t2, 0],
+      pts[t2, 1],
+    )
     det = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)
     f1, f2, f3 = f[t0], f[t1], f[t2]
     gx = ((f2 - f1) * (y3 - y1) - (f3 - f1) * (y2 - y1)) / det
@@ -413,8 +456,10 @@ else:
 
   def load(fn):
     raw = np.loadtxt(fn, skiprows=2)
-    d = {k: nodal_avg(raw[:, i]) for i, k in
-         enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])}
+    d = {
+      k: nodal_avg(raw[:, i])
+      for i, k in enumerate(['x', 'y', 'rho', 'u', 'v', 'T', 'p', 'Ma', 'miubl'])
+    }
     d['x'] = pts[:, 0]
     d['y'] = pts[:, 1]
     d['Cp'] = (d['p'] - p_inf) / q_inf
@@ -429,11 +474,13 @@ else:
   def draw(ax, z, levels, cmap, extend):
     # 与结构化(cyc/naca)后端保持同一套等值线风格: 21 级 + 隔级黑色等值线
     xy = pts / LREF
-    c = ax.tricontourf(xy[:, 0], xy[:, 1], tri, z, levels=levels, cmap=cmap,
-                       extend=extend, antialiased=False)
+    c = ax.tricontourf(
+      xy[:, 0], xy[:, 1], tri, z, levels=levels, cmap=cmap, extend=extend, antialiased=False
+    )
     if cmap != 'gray':
-      ax.tricontour(xy[:, 0], xy[:, 1], tri, z, levels=levels[1::2], colors='k',
-                    linewidths=0.45, alpha=0.7)
+      ax.tricontour(
+        xy[:, 0], xy[:, 1], tri, z, levels=levels[1::2], colors='k', linewidths=0.45, alpha=0.7
+      )
     return c
 
   def sonic(ax, z):
@@ -494,11 +541,29 @@ plt.close(fig)
 s_all = h[h['phase'] == 'S']
 rows = []
 if len(s_all) > 1:
-  rows.append(('steady', P['phase'] == 'S', s_all['step'], s_all['res'], None, 'steady step',
-               f'steady residual {s_all["res"][0]:.2e} -> {s_all["res"][-1]:.2e}'))
+  rows.append(
+    (
+      'steady',
+      P['phase'] == 'S',
+      s_all['step'],
+      s_all['res'],
+      None,
+      'steady step',
+      f'steady residual {s_all["res"][0]:.2e} -> {s_all["res"][-1]:.2e}',
+    )
+  )
 if len(u) > 1 and P['phase'] == 'U':
-  rows.append(('urans', False, u['time'], u['res'], u['res0'], 't [s]',
-               f'inner residual, median drop {np.median(u["res"] / u["res0"]):.2e}'))
+  rows.append(
+    (
+      'urans',
+      False,
+      u['time'],
+      u['res'],
+      u['res0'],
+      't [s]',
+      f'inner residual, median drop {np.median(u["res"] / u["res0"]):.2e}',
+    )
+  )
 nrow = len(rows)
 fig, axs = plt.subplots(nrow, 1, figsize=(9, 2.4 * nrow), squeeze=False)
 for k, (_, _, xs, rr, r0, xlab, ttl) in enumerate(rows):
@@ -561,13 +626,16 @@ if rms is not None and not a.no_cp_rms:
   z.tick_params(which='both', direction='in', top=True, right=True)
   z.tick_params(which='major', length=6)
   z.tick_params(which='minor', length=3)
-  z.set_title(f'{a.case}  upper-surface $C_p$ fluctuation  Ma={far["Ma"]} '
-              f'alpha={far["alpha"]}deg')
+  z.set_title(f'{a.case}  upper-surface $C_p$ fluctuation  Ma={far["Ma"]} alpha={far["alpha"]}deg')
   fig.tight_layout()
   fig.savefig(os.path.join(out, 'cp_rms.png'), dpi=140)
   plt.close(fig)
-  np.savetxt(os.path.join(out, 'cp_rms.dat'), np.column_stack([grid, rms]),
-             header='x/c  Cp_RMS(upper)', fmt='%.6e')
+  np.savetxt(
+    os.path.join(out, 'cp_rms.dat'),
+    np.column_stack([grid, rms]),
+    header='x/c  Cp_RMS(upper)',
+    fmt='%.6e',
+  )
   print('写出 cp_rms.png, cp_rms.dat')
 
 # ============================ 壁面探针: Cp(t) 与 PSD ============================
@@ -576,8 +644,7 @@ probe_lines = []
 if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
   stp = np.array(sorted(cp_by_step))
   tp = np.array([cp_by_step[s][0] for s in stp])
-  sp = np.array([np.interp(a.probe, cp_by_step[s][1][0][1], cp_by_step[s][1][0][2])
-                 for s in stp])
+  sp = np.array([np.interp(a.probe, cp_by_step[s][1][0][1], cp_by_step[s][1][0][2]) for s in stp])
   keep = np.isfinite(sp) & np.isfinite(tp)
   stp, tp, sp = stp[keep], tp[keep], sp[keep]
   if len(tp) > 8 and tp[-1] > tp[0]:
@@ -589,23 +656,31 @@ if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
     win = np.hanning(len(sp))
     Yf = np.fft.rfft((sp - sp.mean()) * win)
     fr = np.fft.rfftfreq(len(sp), dtp)
-    S = 2.0 * np.abs(Yf) ** 2 * dtp / np.sum(win ** 2)
+    S = 2.0 * np.abs(Yf) ** 2 * dtp / np.sum(win**2)
     lofrac = float(S[fr <= 20.0].sum() / S.sum()) if S.sum() > 0 else 0.0
     ipk = int(np.argmin(np.abs(fr - fpk)))
     fig2, ax2 = plt.subplots(2, 1, figsize=(9.0, 5.6))
     ax2[0].plot(tp, sp, lw=1.0, color='C0')
     ax2[0].set_xlabel('t [s]')
     ax2[0].set_ylabel(f'$C_p$ @ $x/c={a.probe:g}$')
-    ax2[0].set_title(f'{a.case}  Ma={far["Ma"]} alpha={far["alpha"]}deg  '
-                     f'wall probe $x/c={a.probe:g}$  ($C_p$ RMS={rms_p:.3f})', fontsize=10)
+    ax2[0].set_title(
+      f'{a.case}  Ma={far["Ma"]} alpha={far["alpha"]}deg  '
+      f'wall probe $x/c={a.probe:g}$  ($C_p$ RMS={rms_p:.3f})',
+      fontsize=10,
+    )
     ax2[1].loglog(fr[fr > 0], S[fr > 0], lw=1.0, color='C3')
     ax2[1].axvline(fpk, color='k', lw=0.8, ls='--', alpha=0.7)
     ax2[1].set_xlim(fr[fr > 0].min(), min(1000.0, fr[-1]))
     ax2[1].set_xlabel('f [Hz]')
     ax2[1].set_ylabel('PSD [$C_p^2$/Hz]')
-    ax2[1].annotate(f'peak {fpk:.1f} Hz\nSt={fpk * LREF / U:.4f}',
-                    xy=(fpk, S[ipk]), xytext=(0.72, 0.75), textcoords='axes fraction',
-                    fontsize=9, arrowprops=dict(arrowstyle='->', lw=0.8))
+    ax2[1].annotate(
+      f'peak {fpk:.1f} Hz\nSt={fpk * LREF / U:.4f}',
+      xy=(fpk, S[ipk]),
+      xytext=(0.72, 0.75),
+      textcoords='axes fraction',
+      fontsize=9,
+      arrowprops=dict(arrowstyle='->', lw=0.8),
+    )
     for axx in ax2:
       axx.tick_params(which='both', direction='in', top=True, right=True)
     fig2.tight_layout()
@@ -617,9 +692,12 @@ if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
     ax4.set_xlabel('t [s]')
     ax4.set_ylabel(f'$C_p$ @ $x/c={a.probe:g}$')
     ax4.tick_params(which='both', direction='in', top=True, right=True)
-    ax4.set_title(f'{a.case}  wall $C_p$ history @ $x/c={a.probe:g}$   Ma={far["Ma"]}  '
-                  f'alpha={far["alpha"]}deg   steps {int(stp[0])}~{int(stp[-1])}   '
-                  f'RMS={rms_p:.3f}  ({sp.min():.3f} ~ {sp.max():.3f})', fontsize=10)
+    ax4.set_title(
+      f'{a.case}  wall $C_p$ history @ $x/c={a.probe:g}$   Ma={far["Ma"]}  '
+      f'alpha={far["alpha"]}deg   steps {int(stp[0])}~{int(stp[-1])}   '
+      f'RMS={rms_p:.3f}  ({sp.min():.3f} ~ {sp.max():.3f})',
+      fontsize=10,
+    )
     fig4.tight_layout()
     fig4.savefig(os.path.join(out, 'cp_probe_t.png'), dpi=150)
     plt.close(fig4)
@@ -628,8 +706,14 @@ if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
     fig3, ax3 = plt.subplots(figsize=(8.4, 4.8))
     pos = fr > 0
     ax3.loglog(fr[pos], S[pos], lw=1.1, color='C3', zorder=3)
-    ax3.axvspan(max(fr[pos].min(), fpk - dfpk), fpk + dfpk, color='0.75', alpha=0.5,
-                zorder=1, label=f'±Δf = {dfpk:.1f} Hz')
+    ax3.axvspan(
+      max(fr[pos].min(), fpk - dfpk),
+      fpk + dfpk,
+      color='0.75',
+      alpha=0.5,
+      zorder=1,
+      label=f'±Δf = {dfpk:.1f} Hz',
+    )
     ax3.axvline(fpk, color='k', lw=0.9, ls='--', alpha=0.8, zorder=4)
     ax3.set_xlim(fr[pos].min(), min(1000.0, fr[-1]))
     ax3.set_ylim(S.max() * 1e-5, S.max() * 40)
@@ -637,41 +721,61 @@ if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
     nseg = 4
     seg_n = len(sp) // nseg
     if seg_n >= 32:
-        ww = np.hanning(seg_n)
-        fw = np.fft.rfftfreq(seg_n, dtp)
-        Sw = np.zeros_like(fw)
-        for i in range(nseg):
-            seg = sp[i * seg_n:(i + 1) * seg_n]
-            Yw = np.fft.rfft((seg - seg.mean()) * ww)
-            Sw += 2.0 * np.abs(Yw) ** 2 * dtp / np.sum(ww ** 2)
-        Sw /= nseg
-        ax3.loglog(fw[1:], Sw[1:], lw=2.2, color='k', alpha=0.6, zorder=5,
-                   label=f'Welch {nseg} segs avg (df={fw[1]:.1f} Hz)')
+      ww = np.hanning(seg_n)
+      fw = np.fft.rfftfreq(seg_n, dtp)
+      Sw = np.zeros_like(fw)
+      for i in range(nseg):
+        seg = sp[i * seg_n : (i + 1) * seg_n]
+        Yw = np.fft.rfft((seg - seg.mean()) * ww)
+        Sw += 2.0 * np.abs(Yw) ** 2 * dtp / np.sum(ww**2)
+      Sw /= nseg
+      ax3.loglog(
+        fw[1:],
+        Sw[1:],
+        lw=2.2,
+        color='k',
+        alpha=0.6,
+        zorder=5,
+        label=f'Welch {nseg} segs avg (df={fw[1]:.1f} Hz)',
+      )
     ax3.set_xlabel('f [Hz]')
     ax3.set_ylabel('PSD [$C_p^2$/Hz]')
     ax3.tick_params(which='both', direction='in', right=True)
     ax3.tick_params(which='major', length=6)
     ax3.tick_params(which='minor', length=3)
     ax3.legend(fontsize=9, loc='upper right')
-    sec = ax3.secondary_xaxis('top',
-                              functions=(lambda f: f * LREF / U, lambda st: st * U / LREF))
+    sec = ax3.secondary_xaxis('top', functions=(lambda f: f * LREF / U, lambda st: st * U / LREF))
     sec.set_xlabel('St = fL/U')
     sec.tick_params(direction='in')
-    ax3.annotate(f'{fpk:.1f} Hz\nSt = {fpk * LREF / U:.4f}\nPSD = {S[ipk]:.2e}',
-                 xy=(fpk, S[ipk]), xytext=(fpk * 2.4, S[ipk] * 0.10), fontsize=9,
-                 arrowprops=dict(arrowstyle='->', lw=0.8, shrinkA=2, shrinkB=2))
-    ax3.set_title(f'{a.case}  wall $C_p$ PSD @ $x/c={a.probe:g}$   Ma={far["Ma"]}  '
-                  f'alpha={far["alpha"]}deg\n'
-                  f'steps {int(stp[0])}~{int(stp[-1])}   N={len(tp)}   fs={1 / dtp:.0f} Hz   '
-                  f'df={dfpk:.2f} Hz   ({nper:.1f} cycles in window)', fontsize=10)
+    ax3.annotate(
+      f'{fpk:.1f} Hz\nSt = {fpk * LREF / U:.4f}\nPSD = {S[ipk]:.2e}',
+      xy=(fpk, S[ipk]),
+      xytext=(fpk * 2.4, S[ipk] * 0.10),
+      fontsize=9,
+      arrowprops=dict(arrowstyle='->', lw=0.8, shrinkA=2, shrinkB=2),
+    )
+    ax3.set_title(
+      f'{a.case}  wall $C_p$ PSD @ $x/c={a.probe:g}$   Ma={far["Ma"]}  '
+      f'alpha={far["alpha"]}deg\n'
+      f'steps {int(stp[0])}~{int(stp[-1])}   N={len(tp)}   fs={1 / dtp:.0f} Hz   '
+      f'df={dfpk:.2f} Hz   ({nper:.1f} cycles in window)',
+      fontsize=10,
+    )
     fig3.tight_layout()
     fig3.savefig(os.path.join(out, 'psd.png'), dpi=150)
     plt.close(fig3)
-    np.savetxt(os.path.join(out, f'cp_probe_x{a.probe:g}.dat'),
-               np.column_stack([tp, sp]), header=f't[s]  Cp(x/c={a.probe:g}, upper)',
-               fmt='%.6e')
-    np.savetxt(os.path.join(out, f'psd_x{a.probe:g}.dat'), np.column_stack([fr, S]),
-               header=f'f[Hz]  PSD(Cp, x/c={a.probe:g})', fmt='%.6e')
+    np.savetxt(
+      os.path.join(out, f'cp_probe_x{a.probe:g}.dat'),
+      np.column_stack([tp, sp]),
+      header=f't[s]  Cp(x/c={a.probe:g}, upper)',
+      fmt='%.6e',
+    )
+    np.savetxt(
+      os.path.join(out, f'psd_x{a.probe:g}.dat'),
+      np.column_stack([fr, S]),
+      header=f'f[Hz]  PSD(Cp, x/c={a.probe:g})',
+      fmt='%.6e',
+    )
     probe_lines += [
       f'壁面压力探针 x/c={a.probe:g} (上表面): Cp RMS = {rms_p:.4f}, '
       f'峰谷 {sp.min():.3f} ~ {sp.max():.3f}',
@@ -680,10 +784,12 @@ if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
     ]
     if lofrac > 0.3:
       probe_lines.append(
-        f'  [!] 该点 ≤20 Hz 低频能量占 {lofrac * 100:.0f}%, 抖振峰被建立漂移压制, '
-        f'主频/St 仅供参考')
-    print(f'写出 psd.png / cp_probe_t.png / cp_probe_pt_psd.png / '
-          f'cp_probe_x{a.probe:g}.dat / psd_x{a.probe:g}.dat')
+        f'  [!] 该点 ≤20 Hz 低频能量占 {lofrac * 100:.0f}%, 抖振峰被建立漂移压制, 主频/St 仅供参考'
+      )
+    print(
+      f'写出 psd.png / cp_probe_t.png / cp_probe_pt_psd.png / '
+      f'cp_probe_x{a.probe:g}.dat / psd_x{a.probe:g}.dat'
+    )
   else:
     print(f'探针数据不足({len(tp)} 帧), 跳过 cp_probe_pt_psd.png')
 elif P['kind'] == 'surface' and P['phase'] != 'U':
@@ -713,7 +819,7 @@ specs = [
   ('vorticity', 'jet', -4.0, 4.0, r'$\omega L/U$'),
 ]
 want = None if a.panels == 'auto' else ([] if a.panels == 'none' else a.panels.split(','))
-for key, cmap, lo, hi, bar in (specs if sa is not None else []):
+for key, cmap, lo, hi, bar in specs if sa is not None else []:
   if want is not None and key not in want:
     continue
   arr = sa[key]
@@ -746,56 +852,65 @@ for key, cmap, lo, hi, bar in (specs if sa is not None else []):
     fig.savefig(os.path.join(out, name), dpi=150)
     plt.close(fig)
     print('写出', name)
-  except Exception as e:                # 单张出问题不影响其余
+  except Exception as e:  # 单张出问题不影响其余
     print('跳过', key, ':', str(e)[:80])
 
 # 最后 6 帧纹影 + 壁面 Cp (仅 URANS; 发散后可能只剩前几帧, 只画全有限的)
 seq = [f for f in files[-6:] if last_valid([f])] if P['phase'] == 'U' else []
 if seq and not a.no_sequence:
-    fig, axs = plt.subplots(len(seq), 2, figsize=(14, 3.2 * len(seq)), squeeze=False,
-                            gridspec_kw={'width_ratios': [1.6, 1]})
-    for row, fn in zip(axs, seq):
-      d = load(fn)
-      if P['structured']:
-        zx, zy, ww = d['x'], d['y'], (d['x'][0], d['y'][0])
-        row[0].pcolormesh(d['x'], d['y'], d['schlieren'], cmap='gray', shading='gouraud',
-                          vmin=0, vmax=1)
-      else:
-        xy = pts / LREF
-        row[0].tripcolor(xy[:, 0], xy[:, 1], tri, d['schlieren'], cmap='gray',
-                         shading='gouraud', vmin=0, vmax=1)
-      outline(row[0])
-      row[0].set_xlim(P['view'][0], P['view'][1])
-      row[0].set_ylim(P['view'][2], P['view'][3])
-      row[0].set_aspect('equal')
-      row[0].set_title(label(fn), fontsize=9)
-      prof = cp_by_step.get(int(os.path.basename(fn)[5:11]), (None, None))[1]
-      if prof:
-        for nm, xv, cv in prof:
-          row[1].plot(xv, -cv, label=nm)
-      else:
-        xr, cr = (d['x'][0], d['Cp'][0]) if P['structured'] else (d['x'], d['Cp'])
-        masks = ((np.ones(len(xr), bool), 'wall'),) if P['kind'] == 'angle' else (
-            (xr > 0, 'upper'), (xr <= 0, 'lower'))
-        for mask, nm in masks:
-          o = np.argsort(xr[mask])
-          row[1].plot(xr[mask][o], -cr[mask][o], label=nm)
-      row[1].grid(alpha=0.3)
-      row[1].set_ylabel('-Cp')
-      if P['kind'] != 'angle':
-        row[1].legend(fontsize=8)
-    axs[-1][1].set_xlabel('$x/c$' if P['kind'] != 'angle' else '$x/D$')
-    fig.tight_layout()
-    fig.savefig(os.path.join(out, 'schlieren_sequence.png'), dpi=110)
-    plt.close(fig)
-    print('写出 schlieren_sequence.png')
+  fig, axs = plt.subplots(
+    len(seq), 2, figsize=(14, 3.2 * len(seq)), squeeze=False, gridspec_kw={'width_ratios': [1.6, 1]}
+  )
+  for row, fn in zip(axs, seq):
+    d = load(fn)
+    if P['structured']:
+      zx, zy, ww = d['x'], d['y'], (d['x'][0], d['y'][0])
+      row[0].pcolormesh(
+        d['x'], d['y'], d['schlieren'], cmap='gray', shading='gouraud', vmin=0, vmax=1
+      )
+    else:
+      xy = pts / LREF
+      row[0].tripcolor(
+        xy[:, 0], xy[:, 1], tri, d['schlieren'], cmap='gray', shading='gouraud', vmin=0, vmax=1
+      )
+    outline(row[0])
+    row[0].set_xlim(P['view'][0], P['view'][1])
+    row[0].set_ylim(P['view'][2], P['view'][3])
+    row[0].set_aspect('equal')
+    row[0].set_title(label(fn), fontsize=9)
+    prof = cp_by_step.get(int(os.path.basename(fn)[5:11]), (None, None))[1]
+    if prof:
+      for nm, xv, cv in prof:
+        row[1].plot(xv, -cv, label=nm)
+    else:
+      xr, cr = (d['x'][0], d['Cp'][0]) if P['structured'] else (d['x'], d['Cp'])
+      masks = (
+        ((np.ones(len(xr), bool), 'wall'),)
+        if P['kind'] == 'angle'
+        else ((xr > 0, 'upper'), (xr <= 0, 'lower'))
+      )
+      for mask, nm in masks:
+        o = np.argsort(xr[mask])
+        row[1].plot(xr[mask][o], -cr[mask][o], label=nm)
+    row[1].grid(alpha=0.3)
+    row[1].set_ylabel('-Cp')
+    if P['kind'] != 'angle':
+      row[1].legend(fontsize=8)
+  axs[-1][1].set_xlabel('$x/c$' if P['kind'] != 'angle' else '$x/D$')
+  fig.tight_layout()
+  fig.savefig(os.path.join(out, 'schlieren_sequence.png'), dpi=110)
+  plt.close(fig)
+  print('写出 schlieren_sequence.png')
 
 # ============================ summary / README ============================
 lines = lines + shock_lines + probe_lines
 if div_step is not None:
   dt_s = cfg['solver']['urans']['dt'] if P['phase'] == 'U' else 1.0
-  lines.insert(0, f'[!] 求解器在 step {div_step} 发散: 以下统计只覆盖前 {len(u)} 步'
-                  f'({len(u) * dt_s:.4f} s), 不可作为定量抖振指标')
+  lines.insert(
+    0,
+    f'[!] 求解器在 step {div_step} 发散: 以下统计只覆盖前 {len(u)} 步'
+    f'({len(u) * dt_s:.4f} s), 不可作为定量抖振指标',
+  )
 text = '\n'.join(lines)
 open(os.path.join(out, 'summary.txt'), 'w', encoding='utf-8').write(text + '\n')
 print(text)
@@ -815,49 +930,70 @@ if a.readme:
   if P['phase'] == 'U':
     num.append(f'物理时间步 dt = {uv["dt"]:g} s（每抖振周期约 {1 / f0 / uv["dt"]:.0f} 步）')
     num.append(f'物理步数 {sv["max_steps"]}，t_end = {uv["dt"] * sv["max_steps"]:.4f} s')
-    num.append(f'内迭代最多 {uv["inner"]} 次'
-               + (f'（tol {uv["inner_tol"]:g}）' if 'inner_tol' in uv else '')
-               + f'，伪时间 CFL = {sv["cfl"]:g}，sweeps = {uv.get("sweeps", 4)}')
+    num.append(
+      f'内迭代最多 {uv["inner"]} 次'
+      + (f'（tol {uv["inner_tol"]:g}）' if 'inner_tol' in uv else '')
+      + f'，伪时间 CFL = {sv["cfl"]:g}，sweeps = {uv.get("sweeps", 4)}'
+    )
     if 'steady_iters' in uv:
       num.append(f'定常预热 {uv["steady_iters"]} 步（CFL 2 → {uv["steady_cfl"]:g}）')
   else:
-    num.append(f'定常迭代 {uv.get("steady_iters")} 步（CFL 2 → {uv.get("steady_cfl"):g}），'
-               f'RANS 段步数 {sv["max_steps"]}（CFL = {sv["cfl"]:g}）')
-  num.append(f'输出间隔：场 {sv["dump_interval"]} 步 / 历史 {sv["convergence_interval"]} 步'
-             + (f' / 壁面 Cp {uv["wall_interval"]} 步' if 'wall_interval' in uv else ''))
+    num.append(
+      f'定常迭代 {uv.get("steady_iters")} 步（CFL 2 → {uv.get("steady_cfl"):g}），'
+      f'RANS 段步数 {sv["max_steps"]}（CFL = {sv["cfl"]:g}）'
+    )
+  num.append(
+    f'输出间隔：场 {sv["dump_interval"]} 步 / 历史 {sv["convergence_interval"]} 步'
+    + (f' / 壁面 Cp {uv["wall_interval"]} 步' if 'wall_interval' in uv else '')
+  )
   rd = [
-    f'# {a.case}  {lab}  alpha={far["alpha"]}°' + ('  （求解器发散）' if div_step else ''), '',
+    f'# {a.case}  {lab}  alpha={far["alpha"]}°' + ('  （求解器发散）' if div_step else ''),
+    '',
     f'- **算例**：{lab}，网格 {CEL} 单元 / {NF} 面（壁面 {len(wallf)} 面）',
     f'- **工况**：Ma = {far["Ma"]}，Re = ρUc/μ = {re_inf:.3e}，alpha = {far["alpha"]}°，'
     f'T = {far["T"]} K，p∞ = {far["p"]:.4f} Pa，U∞ = {U:.4f} m/s',
-    f'- **数值设置**：' + '；'.join(num),
+    '- **数值设置**：' + '；'.join(num),
     f'- **网格**：`{os.path.join(os.path.dirname(a.config), cfg["io"]["mesh"])}`',
     f'- **求解器版本**：PurineCFD-R2 {VERSION}，二进制以 `-DPURINE_JAC_FULL` 编译'
     '（隐式求解用完整 4×4 块 Jacobi）',
     f'- **配置与运行**：`{a.config}`（其中 io.log / io.field 为 PLACEHOLDER，'
     f'运行时由脚本改写为指向本目录后执行 `OMP_NUM_THREADS=32 <二进制> <临时配置>`）',
     f'- **壁钟耗时**：{a.wall:.0f} s（进程总时间，含网格读取与初始化）'
-    if a.wall == a.wall else '- **壁钟耗时**：-',
-    '- **主要结果**：', '', '```', text, '```', '',
+    if a.wall == a.wall
+    else '- **壁钟耗时**：-',
+    '- **主要结果**：',
+    '',
+    '```',
+    text,
+    '```',
+    '',
   ]
   if P['phase'] == 'U' and f0 == f0:
     t_u = u['time']
     t_lo, t_hi = t_u[len(t_u) // 2], t_u[-1]
-    rd.append(f'- **统计窗口**：物理步的后 50%（t = {t_lo:.4f} – {t_hi:.4f} s，'
-              f'约 {(t_hi - t_lo) * f0:.1f} 个抖振周期，T = {1 / f0 * 1000:.2f} ms）；'
-              f'主频由该窗口 FFT 得到，分辨率 {df:.1f} Hz（补零 + 抛物线插值细化）')
+    rd.append(
+      f'- **统计窗口**：物理步的后 50%（t = {t_lo:.4f} – {t_hi:.4f} s，'
+      f'约 {(t_hi - t_lo) * f0:.1f} 个抖振周期，T = {1 / f0 * 1000:.2f} ms）；'
+      f'主频由该窗口 FFT 得到，分辨率 {df:.1f} Hz（补零 + 抛物线插值细化）'
+    )
   if div_step is not None:
-    rd.append(f'- **警告**：本算例求解器在 step {div_step} 发散，本目录的图与统计只代表发散前的'
-              f'前 {len(u)} 步，**不可作为定量结果引用**')
+    rd.append(
+      f'- **警告**：本算例求解器在 step {div_step} 发散，本目录的图与统计只代表发散前的'
+      f'前 {len(u)} 步，**不可作为定量结果引用**'
+    )
   if LREF != 1.0:
-    rd.append(f'- **注意**：力系数参考长度硬编码为 1，输出需乘 1/c = {1 / LREF:.4f}'
-              f'（弦长 {CHORD:.6f} m，上表已换算）')
-  rd.append(f'- **后处理**：`python tests/post.py {a.config} --case {a.case} --out <本目录>`'
-            f'（配置里的 io.field 为 PLACEHOLDER，必须用 --out 指定本目录），输出 '
-            f'`history.png`（力系数）`residual.png`（残差）`cp_dist.png`（壁面 Cp）'
-            f'`cp_rms.png` 与 `cp_rms.dat`（脉动 RMS）`schlieren_sequence.png`（纹影序列）'
-            f'与 9 张云图面板；`cp_probe_t.png`（该点 Cp(t)）与 `psd.png`（对数-对数 PSD，'
-            f'含 ±Δf 不确定带与 St 副轴）、`cp_probe_pt_psd.png`、`psd_x{a.probe:g}.dat` '
-            f'为 x/c={a.probe:g} 壁面探针（用 `--probe` 改位置）')
+    rd.append(
+      f'- **注意**：力系数参考长度硬编码为 1，输出需乘 1/c = {1 / LREF:.4f}'
+      f'（弦长 {CHORD:.6f} m，上表已换算）'
+    )
+  rd.append(
+    f'- **后处理**：`python tests/post.py {a.config} --case {a.case} --out <本目录>`'
+    f'（配置里的 io.field 为 PLACEHOLDER，必须用 --out 指定本目录），输出 '
+    f'`history.png`（力系数）`residual.png`（残差）`cp_dist.png`（壁面 Cp）'
+    f'`cp_rms.png` 与 `cp_rms.dat`（脉动 RMS）`schlieren_sequence.png`（纹影序列）'
+    f'与 9 张云图面板；`cp_probe_t.png`（该点 Cp(t)）与 `psd.png`（对数-对数 PSD，'
+    f'含 ±Δf 不确定带与 St 副轴）、`cp_probe_pt_psd.png`、`psd_x{a.probe:g}.dat` '
+    f'为 x/c={a.probe:g} 壁面探针（用 `--probe` 改位置）'
+  )
   open(os.path.join(out, 'README.md'), 'w', encoding='utf-8').write('\n'.join(rd) + '\n')
   print('写出 README.md')

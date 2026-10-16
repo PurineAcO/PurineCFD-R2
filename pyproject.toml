@@ -1,11 +1,19 @@
 [project]
 name = "purinecfd-tooling"
 version = "0.1.0"
+description = "PurineCFD-R2 的 Python 侧工具：后处理、云图动画、图形运行台"
 requires-python = ">=3.10"
 dependencies = []
 
+# 四组全部列入 default-groups, 所以裸 `uv sync` 就会装齐
 [dependency-groups]
 dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
+post = ["numpy>=1.26", "matplotlib>=3.8", "scipy>=1.11"]
+anim = ["pillow>=10"]
+gui = ["pyside6>=6.6"]
+
+[tool.uv]
+default-groups = ["dev", "post", "anim", "gui"]
 
 [tool.ruff]
 indent-width = 2
