@@ -17,7 +17,7 @@
 #endif
 
 namespace dual {
-// 计算整场残差 R = convect - visflux (单元净流出通量)
+// 计算整场残差
 void eval_residual();
 // 流动方程一次隐式伪时间步, 返回连续方程残差的L2
 double flow_step(double dt, double cfl);

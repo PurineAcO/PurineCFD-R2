@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(PurineCFD_R2 VERSION 2.3.0 LANGUAGES CXX)
+project(PurineCFD_R2 VERSION 2.3.3 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -32,6 +32,10 @@ endif()
 
 option(PURINE_NATIVE "Optimize for the build machine" OFF)
 option(PURINE_SANITIZE "Enable AddressSanitizer and UBSan" OFF)
+option(PURINE_JAC_FULL "Use the full 4x4 block-Jacobian implicit dual-time path" ON)
+if(PURINE_JAC_FULL)
+  target_compile_definitions(purinecfd PRIVATE PURINE_JAC_FULL)
+endif()
 if(PURINE_NATIVE AND NOT MSVC)
   target_compile_options(purinecfd PRIVATE -march=native)
 endif()

@@ -18,6 +18,7 @@ import glob
 import json
 import math
 import os
+import re
 from collections import defaultdict
 
 import matplotlib
@@ -47,6 +48,19 @@ CASES = {
   ),
 }
 
+def solver_version():
+  """从 CMakeLists.txt 的 project(... VERSION x.y.z) 取版本号."""
+  root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+  try:
+    with open(os.path.join(root, 'CMakeLists.txt'), encoding='utf-8') as f:
+      m = re.search(r'project\s*\([^)]*VERSION\s+([0-9]+(?:\.[0-9]+)+)', f.read())
+    return m.group(1) if m else 'unknown'
+  except OSError:
+    return 'unknown'
+
+
+VERSION = solver_version()
+
 ap = argparse.ArgumentParser()
 ap.add_argument('config')
 ap.add_argument('--case', required=True, choices=list(CASES))
@@ -62,6 +76,12 @@ ap.add_argument('--out', default=None, help='覆盖输出目录(默认取 config
 ap.add_argument('--wall', type=float, default=float('nan'), help='壁钟耗时 [s], 写入 README')
 ap.add_argument('--probe', type=float, default=0.45,
                 help='壁面压力探针位置 x/c (输出 Cp(t) 与 PSD, 默认 0.45)')
+ap.add_argument('--no-history', action='store_true', help='不输出 history.png')
+ap.add_argument('--no-residual', action='store_true', help='不输出 residual.png')
+ap.add_argument('--no-cp-dist', action='store_true', help='不输出 cp_dist.png')
+ap.add_argument('--no-cp-rms', action='store_true', help='不输出 cp_rms.png/.dat')
+ap.add_argument('--no-probe', action='store_true', help='不输出壁面探针 Cp / PSD 组')
+ap.add_argument('--no-sequence', action='store_true', help='不输出 schlieren_sequence.png')
 a = ap.parse_args()
 P = CASES[a.case]
 if a.u_pos is None:
@@ -69,6 +89,9 @@ if a.u_pos is None:
 
 base = os.path.dirname(os.path.abspath(a.config))
 cfg = json.load(open(a.config))
+if P['structured'] and 'structured' not in cfg.get('io', {}):
+  print('配置里没有 io.structured, 云图改用非结构后端')
+  P['structured'] = False
 out = a.out or os.path.normpath(os.path.join(base, cfg['io']['field']))
 far = cfg['farfield']
 U = far['Ma'] * math.sqrt(GAMMA * R * far['T'])
@@ -461,7 +484,8 @@ if nrow == 3:
   ax[2].set_ylabel('shock $x/c$')
 ax[-1].set_xlabel('t [s]' if P['phase'] == 'U' else 'steady step')
 fig.tight_layout()
-fig.savefig(os.path.join(out, 'history.png'), dpi=130)
+if not a.no_history:
+  fig.savefig(os.path.join(out, 'history.png'), dpi=130)
 plt.close(fig)
 
 # ============================ 残差曲线 ============================
@@ -490,13 +514,16 @@ for k, (_, _, xs, rr, r0, xlab, ttl) in enumerate(rows):
   if r0 is not None:
     a_.set_ylim(max(rr.min(), 1e-12) * 0.5, max(r0.max(), rr.max()) * 2)
 fig.tight_layout()
-fig.savefig(os.path.join(out, 'residual.png'), dpi=130)
+if not a.no_residual:
+  fig.savefig(os.path.join(out, 'residual.png'), dpi=130)
+  print('写出 residual.png')
 plt.close(fig)
-print('写出 residual.png')
 
 # ============================ Cp 分布 ============================
 if not cpn:
   print('无壁面 Cp 数据, 跳过 cp_dist.png')
+elif a.no_cp_dist:
+  pass
 else:
   fig, z = plt.subplots(figsize=(8.4, 4.4))
   if P['kind'] == 'angle':
@@ -523,7 +550,7 @@ else:
   plt.close(fig)
   print('写出 cp_dist.png')
 
-if rms is not None:
+if rms is not None and not a.no_cp_rms:
   fig, z = plt.subplots(figsize=(8.4, 4.0))
   z.plot(grid, rms, lw=1.2)
   z.set_xlabel('$x/c$')
@@ -546,7 +573,7 @@ if rms is not None:
 # ============================ 壁面探针: Cp(t) 与 PSD ============================
 # 上表面 x/c 探针的 Cp 时间序列 + 单段 Hann 窗 PSD; 抖振主频/St 直接从探针得到
 probe_lines = []
-if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8:
+if cp_by_step and P['phase'] == 'U' and len(cp_by_step) > 8 and not a.no_probe:
   stp = np.array(sorted(cp_by_step))
   tp = np.array([cp_by_step[s][0] for s in stp])
   sp = np.array([np.interp(a.probe, cp_by_step[s][1][0][1], cp_by_step[s][1][0][2])
@@ -724,7 +751,7 @@ for key, cmap, lo, hi, bar in (specs if sa is not None else []):
 
 # 最后 6 帧纹影 + 壁面 Cp (仅 URANS; 发散后可能只剩前几帧, 只画全有限的)
 seq = [f for f in files[-6:] if last_valid([f])] if P['phase'] == 'U' else []
-if seq:
+if seq and not a.no_sequence:
     fig, axs = plt.subplots(len(seq), 2, figsize=(14, 3.2 * len(seq)), squeeze=False,
                             gridspec_kw={'width_ratios': [1.6, 1]})
     for row, fn in zip(axs, seq):
@@ -747,7 +774,7 @@ if seq:
         for nm, xv, cv in prof:
           row[1].plot(xv, -cv, label=nm)
       else:
-        xr, cr = d['x'][0], d['Cp'][0]
+        xr, cr = (d['x'][0], d['Cp'][0]) if P['structured'] else (d['x'], d['Cp'])
         masks = ((np.ones(len(xr), bool), 'wall'),) if P['kind'] == 'angle' else (
             (xr > 0, 'upper'), (xr <= 0, 'lower'))
         for mask, nm in masks:
@@ -791,12 +818,13 @@ if a.readme:
     num.append(f'内迭代最多 {uv["inner"]} 次'
                + (f'（tol {uv["inner_tol"]:g}）' if 'inner_tol' in uv else '')
                + f'，伪时间 CFL = {sv["cfl"]:g}，sweeps = {uv.get("sweeps", 4)}')
-    num.append(f'定常预热 {uv["steady_iters"]} 步（CFL 2 → {uv["steady_cfl"]:g}）')
+    if 'steady_iters' in uv:
+      num.append(f'定常预热 {uv["steady_iters"]} 步（CFL 2 → {uv["steady_cfl"]:g}）')
   else:
     num.append(f'定常迭代 {uv.get("steady_iters")} 步（CFL 2 → {uv.get("steady_cfl"):g}），'
                f'RANS 段步数 {sv["max_steps"]}（CFL = {sv["cfl"]:g}）')
   num.append(f'输出间隔：场 {sv["dump_interval"]} 步 / 历史 {sv["convergence_interval"]} 步'
-             f' / 壁面 Cp {uv.get("wall_interval")} 步')
+             + (f' / 壁面 Cp {uv["wall_interval"]} 步' if 'wall_interval' in uv else ''))
   rd = [
     f'# {a.case}  {lab}  alpha={far["alpha"]}°' + ('  （求解器发散）' if div_step else ''), '',
     f'- **算例**：{lab}，网格 {CEL} 单元 / {NF} 面（壁面 {len(wallf)} 面）',
@@ -804,7 +832,7 @@ if a.readme:
     f'T = {far["T"]} K，p∞ = {far["p"]:.4f} Pa，U∞ = {U:.4f} m/s',
     f'- **数值设置**：' + '；'.join(num),
     f'- **网格**：`{os.path.join(os.path.dirname(a.config), cfg["io"]["mesh"])}`',
-    '- **求解器版本**：PurineCFD-R2 2.3.1，二进制以 `-DPURINE_JAC_FULL` 编译'
+    f'- **求解器版本**：PurineCFD-R2 {VERSION}，二进制以 `-DPURINE_JAC_FULL` 编译'
     '（隐式求解用完整 4×4 块 Jacobi）',
     f'- **配置与运行**：`{a.config}`（其中 io.log / io.field 为 PLACEHOLDER，'
     f'运行时由脚本改写为指向本目录后执行 `OMP_NUM_THREADS=32 <二进制> <临时配置>`）',
