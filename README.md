@@ -5,7 +5,7 @@
 - **2.3.3** 增强了求解器的鲁棒性，即使用包括边界在内完全解析的Jacobi进行迭代，还增加了自适应CFL稳定，抑制了远场发散。改版还调整了求解器源码文件的组织。
 - **2.3.1** 起，双时间步的隐式求解使用**完整的 4×4 块 Jacobi**（[dualtime_full.hpp](src/dualtime_full.hpp)）：对角块与相邻块由对流 Jacobi $A_n$ 、Roe 耗散矩阵 $\hat{A}_n$ 、黏性梯度响应 $T_f$ 、冻结梯度 $B_f$ 组装，不再用单个标量谱半径近似。编译期由 `-DPURINE_JAC_FULL` 选择（对应 CMake 选项 `PURINE_JAC_FULL`，默认 ON）；关掉则退回 2.3.0 的标量版本 [dualtime.hpp](src/dualtime.hpp)。
 
-## 构建
+## 构建与运行
 
 ### 依赖
 
@@ -23,12 +23,11 @@
 
 ### 编译
 
+提供了快速编译脚本：
+
 ```sh
 bash fastbuild.sh
 ```
-
-它等价于 `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPURINE_NATIVE=ON -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON`
-加 `cmake --build build -j 8`，产物是 `build/purinecfd`。
 
 CMake 选项：
 
@@ -43,14 +42,14 @@ CMake 选项：
 根目录的 [config.json](config.json) 已指向圆柱算例，输入以下命令运行：
 
 ```sh
-python3 cases/cylinder/generate_case.py   # 生成 mesh.txt / mesh_struct.txt / parameters.json
+python3 cases/cylinder/generate_case.py
 OMP_NUM_THREADS=32 ./build/purinecfd config.json
 ```
 
 输出写在 `io.field` 指向的目录（这里是 `run/field/`）：`history.csv` 每步一行，`step_*.dat` 每
 `dump_interval` 步一个，配了 `urans.wall_interval` 时还有 `wall_cp.dat`；屏幕输出进 `run/run.log`。
 
-注意 `io.field` 是输出目录，**重复跑同一个 `io.field` 会覆盖上一次的结果**
+注意 `io.field` 是输出目录，重复跑同一个 `io.field` 会覆盖上一次的结果
 
 ### 使用GUI运行
 
@@ -83,11 +82,64 @@ WSL 用户需要 WSLg（`echo $DISPLAY` 有输出即可）。WSL 发行版默认
 [gui/main.py](gui/main.py) 会自动从 `/mnt/c/Windows/Fonts/` 寻找；找不到时会提示
 `sudo apt install fonts-noto-cjk`。
 
-## 运行
+### 从中间流场启动
 
-编译、跑第一个算例、装 Python 依赖都见上面的「构建」一节。
+`io` 里加一个可选的 `restart`，指向任意一次运行写出的 `step_*.dat` 即可接着那个流场算：
 
-配置文件分 `io`、`solver`、`farfield` 三部分。`io` 下 `mesh`、`log`、`field` 必填，`structured` 可选：给出结构化邻接表路径时启用虚拟单元（PLOT3D 单块，拓扑由 `S_MAX`/`N_MAX` 隐含），缺省表示网格不带结构化信息。
+```json
+"io": {
+  ...
+  "restart": "../../run/25-oat-a37-20261016-1632/step_001500.dat"
+}
+```
+
+中断与发散两种情况都会把当前这一物理步的流场落进 `io.field`，文件名为 `step_%06d.dat`，当受到坏单元时，退出码为1，正常打断时退出码为0
+
+**目前该技术尚未成熟，舍入误差控制的不好，不建议使用**
+
+## 算例
+
+三个算例的完整记录都在 `run/` 下。以下显示了在仓库开发者机上运行结果
+
+### 圆柱绕流（[config.json](config.json)）
+
+
+- 工况： Ma=0.2， $\mathrm{Re}=\rho UD/\mu=1000$ ，T=300 K，α=0°，来流沿 +x 
+- 物性： Sutherland 黏度；由 Re 反算 p∞≈22.89061 Pa，U∞≈69.44379 m/s 
+- 网格： D=1 m，192×128 单元，远场半径 30D，第一层高度 0.0015D 
+- 边界： 无滑移绝热壁面（ $\tilde\nu=0$ ），亚声速特征远场（ $\tilde\nu_\infty=3\nu_\infty$ ） 
+- 数值： Δt=1.5e-3 s，800 物理步，内迭代最多 20，伪时间 CFL=100 
+- 结果： $\mathrm{St}=fD/U=0.197$（13.67 Hz），Cd 均值 **1.144**（1.089–1.201），Cl 范围 **−0.687–0.691**；壁钟 164 s 
+
+### NACA0012（[urans_m07a5.json](cases/naca0012/urans_m07a5.json)）
+
+
+- 工况： Ma=0.7，Re=1e7，α=5°，T=300 K 
+- 网格： 弦长 1 m，O 型网格 326×89，远场约 9c 
+- 数值： 先 1500 步定常（steady_cfl=50）给初场，再 3000 步 URANS，Δt=2e-4 s，内迭代 40 
+- 结果： 激波自持振荡（抖振）：上表面激波 x/c **0.207–0.314**（均值 0.274），Cl **0.439–0.674**（均值 0.584），Cd 均值 0.0354，主频 **12.92 Hz**（ $k=\pi fc/U=0.167$ ），上表面 Cp RMS 峰值 **0.40**（位于 x/c=0.285 激波处）；壁钟 2106 s 
+
+两个算例每个物理步都建议让内迭代降到 `inner_tol`（连续方程残差下降约两个量级）；NACA0012 的内迭代加到 80 次后振荡频率与幅值基本不变。结果尚未做网格独立性验证。
+
+### OAT15A 抖振（[urans_m073a35_re33e6.json](cases/oat15a/urans_m073a35_re33e6.json)）
+
+网格用 `cases/oat15a/icm_mesh.txt`（62591 单元、474 个壁面面、不带结构化邻接表）。配制为「1500 步定常预热
+（CFL 2→50）+ 2000 物理步」，壁钟约 2 小时（96 线程，每物理步 3.5–4.0 s）。
+
+| 工况 | dt | 伪时间 CFL | 后半段 Cl | 后半段 Cd | 主频 / St | 激波 x/c |
+| --- | --- | --- | --- | --- | --- | --- |
+| α=3.5°，Ma=0.73，Re=3.3e6 | 1e-4 s | 100 | 均值 **0.896**（0.731–1.027）| 均值 **0.0439** | **71.7 Hz** / 0.0651（$\Delta f$=10 Hz）| 均值 0.455 |
+| α=3.9°，Ma=0.73，Re=3.3e6 | 5e-5 s | 200 | 均值 **0.854**（0.627–1.067）| 均值 **0.0505** | **74.5 Hz** / 0.0676（$\Delta f$=20 Hz）| 均值 0.395 |
+
+（力系数输出参考长度硬编码为 1，标准弦长都是 0.23 m，实际 $C_l$ 需再除以 0.23。）
+
+这两个工况正是 2.3.3 之前blow-up两个算例；修好后跑满全程且**从未触发过 CFL 回退**。
+
+## 以开发者身份运行
+
+### 关于json
+
+配置文件分 `io`、`solver`、`farfield` 三部分。`io` 下 `mesh`、`log`、`field` 必填，`structured`（结构化邻接表）与 `restart`（起始流场）可选：给出结构化邻接表路径时启用虚拟单元（PLOT3D 单块，拓扑由 `S_MAX`/`N_MAX` 隐含），缺省表示网格不带结构化信息。
 
 `farfield.alpha` 是以度为单位、从 +x 方向逆时针为正的来流迎角，取值需满足 $|\alpha|<90$。`farfield.p` 是来流静压，要按雷诺数给工况就反算。
 
@@ -135,10 +187,7 @@ Jacobi 对拍。
 | 时间推进 | [dualtime.hpp](src/dualtime.hpp)、[dualtime_full.hpp](src/dualtime_full.hpp) | 双时间步：BDF1 外迭代与伪时间内迭代；块 Jacobi 组装与对称 Gauss-Seidel 求解 |
 | 驱动与输出 | [main.cpp](src/main.cpp)、[io.hpp](src/io.hpp) | 配置解析、主循环、日志与流场输出 |
 
-`timarch.hpp`（显式时间推进）、`residual.hpp`、`parallel.hpp` 目前不被引用，为保留模块。
-`tests/debug.cpp` 是 OAT15A 的隐式求解检验台，与主程序走同一套双时间步路径（2.3.1 起不再用显式 RK3）：
-逐项检查网格/几何/梯度/通量/SA 源项，再用远场边界的数值微分 Jacobian 对拍，最后按 `cfl × inner`
-标定伪时间参数，输出 `debugres/summary.txt` 与 `debugres/calib.csv`。
+`timarch.hpp`（显式时间推进，2.2.x版本）、`residual.hpp`、`parallel.hpp` 目前不被引用，为保留模块。
 
 ## 数值约定
 
@@ -164,6 +213,7 @@ $$L_{cj}=\frac{1}{2}s_{f}A_{n,f}(j)-\frac{1}{2}\left|\bar{A}_{n,f}\right|-T_{f}-
 
 这里 $\lambda_{f}$ 是面上对流与黏性谱半径之和，$T_{f}$ 是黏性通量对法向梯度的响应（内部面取两点薄层近似，壁面取一阶单侧、距离用 `tur.sad`）， $B_{f}$ 是冻结梯度下的黏性通量 Jacobi。
 
+<!-- 
 **容易被忽略的几点**：
 
 - 守恒量是 $Q=[\rho,\rho u,\rho v,\rho E]$ ， $E=C_vT+(u^2+v^2)/2$ ，`vec4` 的成员名为 `.c/.x/.y/.e`；而 `phy.e` 是**单位质量**总能量，不是 $\rho E$ 。
@@ -171,59 +221,27 @@ $$L_{cj}=\frac{1}{2}s_{f}A_{n,f}(j)-\frac{1}{2}\left|\bar{A}_{n,f}\right|-T_{f}-
 - 面变量（`phy`、`phgrad`、`tur`）是重构后的面值。内部面梯度取两侧单元最小二乘梯度的加权平均；**壁面**用一阶单侧两点差分，因此壁面梯度对单元自身状态的响应是单侧的。
 - `config.hpp` 中 $C_v$ 与 $R/(\gamma-1)$ 并不严格相等（717.645 与 717.625），用 $\frac{\partial Q}{\partial W}$ 做变量变换时会残留约 1e-4 的相对误差。
 - `other_cell()` 对非内部面返回 `nullptr`；结构化网格的虚拟单元存在独立的 `GhostList` 中，其 `index > cell_num`，不能用来索引单元数组。
-- 每个面只由 `nei[0]` 所属的单元写一次，这是并行下避免同一面被多线程同时写的前提。
+- 每个面只由 `nei[0]` 所属的单元写一次，这是并行下避免同一面被多线程同时写的前提。 -->
 
 收敛量取相邻两次检查之间 $\rho$ 、 $u$ 、 $v$ 、 $E$ 、 $\tilde\nu$ 的最大归一化状态更新量 $\max|\Delta\varphi|/\varphi_{\mathrm{ref}}$ ，相对首次检查降到 1e-4 且绝对值小于 1e-6 才停止定常迭代。
 
 ## 出错定位
 
-每个 `convergence_interval` 步做一次全场有效性检查（串行扫描）：密度、总能或 ν̃ 出现 NaN，或密度非正，就打印首个出错单元的编号与坐标，并以非零码退出。
+**每个物理步**做完都扫一遍全场（`bad_cells()`）：密度、总能、T 或 ν̃ 出现非有限值，或密度/T 非正，
+就打印出错单元的编号与坐标：
 
 ```text
-Error: invalid state in cell #59 (0.0257452,0.0510509)
+  bad cell #59 (0.0257452,0.0510509)
+step    860 发散: 12 个坏单元, 回退上一流场, CFL x1.0000 -> x0.5000
 ```
 
-求解器不使用异常：出错时打印一行 `Error: ...` 并返回 `false`，由 `main` 统一返回非零退出码。
+然后**回退到上一个有效流场，并把伪时间 CFL 减半重试这一步**；CFL 一路减到 1e-3 仍不收敛才放弃，
+放弃前会先把回退后的流场写盘（见「续算与中断保存」）再返回非零码。所以：
 
-## 算例
+- 日志里出现 `发散: ... 回退` 不等于这次运行失败，只是这一步自动降了 CFL
+- 只要没有 `CFL 已降到下限仍不收敛, 放弃`，整趟就是正常跑完的
 
-三个算例的完整记录都在 `run/` 下。以下显示了在仓库开发者机上运行结果
-
-### 圆柱绕流（[config.json](config.json)）
-
-| 项目 | 设置 |
-| --- | --- |
-| 工况 | Ma=0.2， $\mathrm{Re}=\rho UD/\mu=1000$ ，T=300 K，α=0°，来流沿 +x |
-| 物性 | Sutherland 黏度；由 Re 反算 p∞≈22.89061 Pa，U∞≈69.44379 m/s |
-| 网格 | D=1 m，192×128 单元，远场半径 30D，第一层高度 0.0015D |
-| 边界 | 无滑移绝热壁面（ $\tilde\nu=0$ ），亚声速特征远场（ $\tilde\nu_\infty=3\nu_\infty$ ） |
-| 数值 | Δt=1.5e-3 s，800 物理步，内迭代最多 20，伪时间 CFL=100 |
-| 结果 | $\mathrm{St}=fD/U=0.197$（13.67 Hz），Cd 均值 **1.144**（1.089–1.201），Cl 范围 **−0.687–0.691**；壁钟 164 s |
-
-### NACA0012（[urans_m07a5.json](cases/naca0012/urans_m07a5.json)）
-
-| 项目 | 设置 |
-| --- | --- |
-| 工况 | Ma=0.7，Re=1e7，α=5°，T=300 K |
-| 网格 | 弦长 1 m，O 型网格 326×89，远场约 9c |
-| 数值 | 先 1500 步定常（steady_cfl=50）给初场，再 3000 步 URANS，Δt=2e-4 s，内迭代 40 |
-| 结果 | 激波自持振荡（抖振）：上表面激波 x/c **0.207–0.314**（均值 0.274），Cl **0.439–0.674**（均值 0.584），Cd 均值 0.0354，主频 **12.92 Hz**（ $k=\pi fc/U=0.167$ ），上表面 Cp RMS 峰值 **0.40**（位于 x/c=0.285 激波处）；壁钟 2106 s |
-
-两个算例每个物理步都建议让内迭代降到 `inner_tol`（连续方程残差下降约两个量级）；NACA0012 的内迭代加到 80 次后振荡频率与幅值基本不变。结果尚未做网格独立性验证。
-
-### OAT15A 抖振（[urans_m073a35_re33e6.json](cases/oat15a/urans_m073a35_re33e6.json)）
-
-网格用 `cases/oat15a/icm_mesh.txt`（62591 单元、474 个壁面面、不带结构化邻接表）。配制为「1500 步定常预热
-（CFL 2→50）+ 2000 物理步」，壁钟约 2 小时（96 线程，每物理步 3.5–4.0 s）。
-
-| 工况 | dt | 伪时间 CFL | 后半段 Cl | 后半段 Cd | 主频 / St | 激波 x/c |
-| --- | --- | --- | --- | --- | --- | --- |
-| α=3.5°，Ma=0.73，Re=3.3e6 | 1e-4 s | 100 | 均值 **0.896**（0.731–1.027）| 均值 **0.0439** | **71.7 Hz** / 0.0651（$\Delta f$=10 Hz）| 均值 0.455 |
-| α=3.9°，Ma=0.73，Re=3.3e6 | 5e-5 s | 200 | 均值 **0.854**（0.627–1.067）| 均值 **0.0505** | **74.5 Hz** / 0.0676（$\Delta f$=20 Hz）| 均值 0.395 |
-
-（力系数输出参考长度硬编码为 1，标准弦长都是 0.23 m，实际 $C_l$ 需再除以 0.23。）
-
-这两个工况正是 2.3.3 之前blow-up两个算例；修好后跑满全程且**从未触发过 CFL 回退**。
+配置本身的错误在启动阶段打印一行直接报错并退出，求解器不使用异常。
 
 ## URANS（双时间步）
 
@@ -234,7 +252,7 @@ Error: invalid state in cell #59 (0.0257452,0.0510509)
 - SA 方程在流动方程之后单独求解，同样 BDF1 + 隐式伪时间；对流一阶迎风，破坏项进对角。
 - 残差 $R$ 复用 Roe + MUSCL + 最小二乘梯度 + SA 黏性通量。
 
-配置在 `solver` 下增加 `urans` 一节，`max_steps` 为物理时间步数，`cfl` 为内迭代伪时间 CFL，`convergence_interval` 为屏幕输出间隔：
+配置在 `solver` 下增加 `urans` 一节，`end_step`（或 `max_steps`）为物理时间步数，`cfl` 为内迭代伪时间 CFL，`convergence_interval` 为屏幕输出间隔：
 
 | 键 | 含义 | 默认 |
 | --- | --- | --- |
@@ -289,23 +307,27 @@ uv run --with numpy --with matplotlib --with pillow python tests/vort_anim.py \
 
 | 选项卡 | 内容 |
 | --- | --- |
-| ① 算例 | 算例（cylinder / naca0012 / oat15a）、配置模板（首项是内置默认模板）、网格文件、结构化邻接表、输出目录 |
+| ① 算例 | 算例（cylinder / naca0012 / oat15a）、配置模板（首项是内置默认模板）、网格文件、结构化邻接表、起始流场（可留空，填了就接着那个场算）、输出目录 |
 | ② 来流 | 马赫数、雷诺数、静温 T、参考长度 L、攻角 α；下方实时显示换算出的 μ / a / U∞ / ρ∞ / p∞ / q∞ |
 | ③ 求解 | 求解参数**表单**，字段由所选模板的 `solver` 段动态生成，不暴露 JSON |
 | ④ 后处理 | 曲线/统计与 9 个云图面板的复选框、探针位置、u 色标 |
 | ⑤ 运行 | 可执行文件、生成配置 JSON、自动测线程数、开始运行 / 仅跑后处理 / 停止 |
 | ⑥ 控制台 | 求解器日志 + stderr + 后处理输出 |
 
-设计要点：
+<!-- 设计要点：
 
 - **② 只需要填雷诺数**：按 Sutherland 公式反算 `p∞`，与 [cases/cylinder/generate_case.py](cases/cylinder/generate_case.py) 同一套公式
 - **没有模板也能跑**：① 页模板下拉首项是「（内置默认）」，`cases/<算例>/` 下没有可用 json 时用内置 `solver` 模板兜底；模板里的 `io` 路径会被重写成真实 run 目录
 - **不改模板**：每次运行在 `cases/<算例>/_run_<编号>.json` 生成一份临时配置，模板文件字节不变
+- **能从中间流场续算**：① 页「起始流场」填一个 `step_*.dat` 即写入 `io.restart`；求解结束时控制台会直接把最新场文件路径列出来提醒
+- **停止不会丢数据**：⑤ 页「停止」先发 SIGTERM，求解器跑完当前物理步、写下该步流场再退出（30 秒无响应才强杀）
 - **不改动现有命令行流程**：GUI 只做「生成配置 + 起进程 + 收日志」，求解器与 `tests/post.py` 的调用方式完全不变
 - 输出目录沿用 `run/<编号>-<标签>-<日期>-<时分>/`，编号自动取 `run/` 下最大值加一
 - 控制台靠**轮询 `run.log`**（求解器内部用 `freopen` 把 stdout 重定向进了日志文件），`stderr` 走管道直连
 - 求解结束自动接后处理，非正常退出也接
 - **自动测线程数**：在 `run/_bench/` 里用各档线程数各跑 25 步定常预热 + 1 个物理步，比壁钟与定常残差，
-  给出「最快」与「残差下降最多」两档（线程数会改变迭代算子，二者未必一致）；只走临时目录，不碰正式 run
+  给出「最快」与「残差下降最多」两档（线程数会改变迭代算子，二者未必一致）；只走临时目录，不碰正式 run -->
+<!-- 
+依赖只有 PySide6（[pyproject.toml](pyproject.toml) 的 `gui` 组）。 -->
 
-依赖只有 PySide6（[pyproject.toml](pyproject.toml) 的 `gui` 组）。细节见 [gui/README.md](gui/README.md)。
+细节见 [gui/README.md](gui/README.md)。

@@ -13,7 +13,9 @@ inline int face_num = 0;       // 面数目
 inline std::string meshpath;   // 网格文件位置
 inline std::string testpath;   // 日志输出路径
 inline std::string fieldpath;  // 流场输出路径
-inline long long max_step = 0; // 时间步数
+inline std::string restartpath; // 起始流场文件, 空表示从自由来流初始化
+inline long long max_step = 0; // 本趟要跑的步数
+inline long long end_step = 0; // 目标步号(绝对), 0表示未设置
 inline int threads = 0;        // OpenMP线程数, 0表示自动选择
 inline bool urans = true;      // 是否是瞬态
 inline char scheme = 'R';      // 无粘通量格式: 'R'=Roe, 'J'=JST

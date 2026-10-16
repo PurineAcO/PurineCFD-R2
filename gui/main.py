@@ -52,16 +52,18 @@ STRUCTURED_CASES = ('cylinder', 'naca0012')
 # io.hpp 用 count() 读这些键, 要求是正整数 (convergence_interval 另要求 >= 2)
 MIN_POSITIVE = {
   'max_steps': 1,
+  'end_step': 1,
   'dump_interval': 1,
   'convergence_interval': 2,
   'threads': 1,
   'urans.inner': 1,
   'urans.sweeps': 1,
-  'urans.steady_iters': 1,
-  'urans.wall_interval': 1,
 }
+# 这几个键 C++ 侧默认就是 0(关), 但显式写 0 会被 io.hpp 判非法, 所以填 0 时不写进 JSON
+ZERO_MEANS_OFF = ('urans.steady_iters', 'urans.wall_interval')
 FIELD_LABELS = {
-  'max_steps': '最大步数',
+  'max_steps': '结束步号',
+  'end_step': '结束步号',
   'cfl': '伪时间 CFL',
   'dump_interval': '场输出间隔',
   'convergence_interval': '报告间隔',
@@ -248,6 +250,10 @@ class MainWindow(QMainWindow):
     self.timer = QTimer(self)
     self.timer.setInterval(250)
     self.timer.timeout.connect(self.poll_log)
+    self.kill_timer = QTimer(self)
+    self.kill_timer.setSingleShot(True)
+    self.kill_timer.setInterval(30000)
+    self.kill_timer.timeout.connect(self.hard_kill)
     self._build()
     self.load_case()
 
@@ -314,6 +320,12 @@ class MainWindow(QMainWindow):
     f2.addRow('网格', self._browse_row(self.mesh_edit, '选择网格文件'))
     self.struct_edit = QLineEdit()
     f2.addRow('结构化邻接表', self._browse_row(self.struct_edit, '选择结构化邻接表'))
+    self.restart_edit = QLineEdit()
+    self.restart_edit.setPlaceholderText('留空 = 从自由来流初始化; 填 step_*.dat 则接着这个流场算')
+    f2.addRow(
+      '起始流场 (可选)',
+      self._browse_row(self.restart_edit, '选择起始流场 step_*.dat', runner.run_root()),
+    )
     self.out_edit = QLineEdit()
     self.out_edit.setReadOnly(True)
     self.out_edit.setPlaceholderText('开跑时自动创建')
@@ -491,6 +503,7 @@ class MainWindow(QMainWindow):
     self.btn_stop = QPushButton('停止')
     self.btn_stop.setObjectName('danger')
     self.btn_stop.clicked.connect(self.stop_run)
+    self.btn_stop.setToolTip('请求求解器收尾: 先写下当前步流场再退出, 30 秒不响应才强杀')
     self.btn_stop.setEnabled(False)
     for b in (self.btn_run, self.btn_post, self.btn_stop):
       row.addWidget(b)
@@ -511,19 +524,19 @@ class MainWindow(QMainWindow):
     v.addWidget(self.console)
     return w
 
-  def _browse_row(self, edit, title):
+  def _browse_row(self, edit, title, start='.'):
     w = QWidget()
     h = QHBoxLayout(w)
     h.setContentsMargins(0, 0, 0, 0)
     h.setSpacing(8)
     h.addWidget(edit, 1)
     b = QPushButton('选择')
-    b.clicked.connect(lambda: self._pick(edit, title))
+    b.clicked.connect(lambda: self._pick(edit, title, start))
     h.addWidget(b)
     return w
 
-  def _pick(self, edit, title):
-    path, _ = QFileDialog.getOpenFileName(self, title, os.path.dirname(edit.text()) or '.')
+  def _pick(self, edit, title, start='.'):
+    path, _ = QFileDialog.getOpenFileName(self, title, os.path.dirname(edit.text()) or start)
     if path:
       edit.setText(path)
 
@@ -550,6 +563,8 @@ class MainWindow(QMainWindow):
     self.mesh_edit.setText(os.path.normpath(os.path.join(base, mesh)) if mesh else '')
     struct = tpl.get('io', {}).get('structured', '')
     self.struct_edit.setText(os.path.normpath(os.path.join(base, struct)) if struct else '')
+    restart = tpl.get('io', {}).get('restart', '')
+    self.restart_edit.setText(os.path.normpath(os.path.join(base, restart)) if restart else '')
     L = self.lref.value() or DEFAULT_L.get(case, 1.0)
     for widget, val in (
       (self.ma, far.get('Ma', 0.2)),
@@ -627,14 +642,17 @@ class MainWindow(QMainWindow):
   def solver_dict(self):
     solver = json.loads(json.dumps(self.template_solver))
     for key, widget in self.fields.items():
-      if isinstance(widget, QCheckBox):
-        value = widget.isChecked()
+      value = widget.isChecked() if isinstance(widget, QCheckBox) else widget.value()
+      # 模板里的 max_steps 是"本趟跑多少步", 界面上按"结束步号"要求用户, 所以写出去一律换成 end_step
+      # (不续算时两者完全等价: step_0 = 0 -> end_step = max_steps)
+      key = 'end_step' if key == 'max_steps' else key
+      inner = key.split('.', 1)[1] if key.startswith('urans.') else key
+      target = solver.setdefault('urans', {}) if key.startswith('urans.') else solver
+      if key in ZERO_MEANS_OFF and not value:
+        target.pop(inner, None)
       else:
-        value = widget.value()
-      if key.startswith('urans.'):
-        solver.setdefault('urans', {})[key.split('.', 1)[1]] = value
-      else:
-        solver[key] = value
+        target[inner] = value
+    solver.pop('max_steps', None)
     return solver
 
   def threads(self):
@@ -677,6 +695,7 @@ class MainWindow(QMainWindow):
       self.struct_edit.text().strip(),
       self.solver_dict(),
       far,
+      self.restart_edit.text().strip(),
     )
     self.out_edit.setText(self.run_dir)
     return self.cfg_path
@@ -736,7 +755,17 @@ class MainWindow(QMainWindow):
     runner.clean_bench(case)
     os.makedirs(runner.bench_dir(), exist_ok=True)
     self.bench_conf = {
-      n: runner.write_bench_config(case, tpl, mesh, struct, solver, far, n, runner.bench_dir())
+      n: runner.write_bench_config(
+        case,
+        tpl,
+        mesh,
+        struct,
+        solver,
+        far,
+        n,
+        runner.bench_dir(),
+        self.restart_edit.text().strip(),
+      )
       for n in cands
     }
     # 第一项当作预热丢弃, 排除首次运行的文件缓存与页表建页开销
@@ -796,6 +825,8 @@ class MainWindow(QMainWindow):
   def bench_report(self):
     self.btn_bench.setEnabled(True)
     self.btn_run.setEnabled(True)
+    if self.idle():
+      self.kill_timer.stop()
     self.btn_stop.setEnabled(self.proc is not None or self.post_proc is not None)
     if not self.bench_results:
       self.status.setText('测线程数已取消')
@@ -839,6 +870,10 @@ class MainWindow(QMainWindow):
     if not os.path.isfile(mesh):
       QMessageBox.warning(self, '找不到网格文件', mesh)
       return
+    restart = self.restart_edit.text().strip()
+    if restart and not os.path.isfile(restart):
+      QMessageBox.warning(self, '找不到起始流场', restart)
+      return
     case = self.case_combo.currentText()
     solver = self.solver_dict()
     far = self.farfield_dict()
@@ -846,17 +881,30 @@ class MainWindow(QMainWindow):
     chosen = [text for key, text in POST_CURVES if opt[key]]
     chosen += opt['panels']
     d = farfield.from_re(far['Ma'], self.re.value(), far['T'], self.lref.value())
+    # 步号是绝对量: 续算时从起始流场的步号往下数, end_step 是终点
+    step_0 = (runner.restart_step(restart) or 0) if restart else 0
+    end_step = int(solver.get('end_step') or solver.get('max_steps') or 0)
+    if end_step <= step_0:
+      QMessageBox.warning(
+        self,
+        '步号不对',
+        f'结束步号 {end_step} 不大于起始流场里的步号 {step_0}, 没有步要跑',
+      )
+      return
+    dt = solver.get('urans', {}).get('dt', '-')
     rows = [
       ('算例', f'{case}  ({self.template_combo.currentText()})'),
       ('网格', os.path.basename(mesh)),
       ('Ma / Re', f'{far["Ma"]:g} / {self.re.value():.3g}'),
       ('T / L / α', f'{far["T"]:g} K / {self.lref.value():g} m / {far["alpha"]:g}°'),
       ('p∞ / U∞', f'{far["p"]:.4f} Pa / {d["U"]:.2f} m/s'),
-      ('步数 / dt', f'{solver.get("max_steps", "-")} / {solver.get("urans", {}).get("dt", "-")}'),
+      ('步号 / dt', f'{step_0 + 1} → {end_step}  共 {end_step - step_0} 步 / dt {dt}'),
       ('可执行文件', os.path.basename(binary)),
       ('线程', self.threads()),
       ('后处理', '、'.join(chosen) if chosen else '无'),
     ]
+    if restart:
+      rows.insert(1, ('起始流场', _short_path(restart)))
     if self.structured_missing():
       rows.append(('注意', '未指定结构化邻接表, 后处理将退回非结构后端'))
     if ConfirmDialog(self, rows).exec() != QDialog.DialogCode.Accepted:
@@ -866,9 +914,10 @@ class MainWindow(QMainWindow):
     if cfg is None:
       return
     run_dir = self.run_dir
-    self.bar.setMaximum(int(solver.get('max_steps', 0)))
-    self.bar.setValue(0)
-    self.bar_label.setText('—')
+    self.bar.setMinimum(step_0)
+    self.bar.setMaximum(end_step)
+    self.bar.setValue(step_0)
+    self.bar_label.setText(f'step {step_0} / {end_step}')
     self.console.clear()
     self.settings.setValue('binary', binary)
 
@@ -888,21 +937,46 @@ class MainWindow(QMainWindow):
     self.btn_stop.setEnabled(True)
     self.status.setText(f'求解中  {os.path.basename(run_dir)}')
     self.append(f'$ cd {runner.ROOT}\n$ OMP_NUM_THREADS={self.threads()} {binary} {cfg}\n\n')
+    if restart:
+      self.append(f'[续算] 起始流场 {restart}\n')
     self.tabs.setCurrentIndex(5)
     self.proc.start(binary, [cfg])
 
   def stop_run(self):
+    alive = [
+      name
+      for name, p in (('求解器', self.proc), ('后处理', self.post_proc), ('测线程数', self.bench))
+      if p is not None
+    ]
+    if not alive:
+      return
     self.bench_plan = []  # 取消测速后续档位, 只保留已测到的结果
+    self.append(f'[停止] 已请 {"／".join(alive)} 收尾, 求解器会先写下当前步流场再退出\n')
+    self.status.setText('正在停止…')
+    for p in (self.bench, self.proc, self.post_proc):
+      if p is not None:
+        p.terminate()
+    self.kill_timer.start()
+
+  def hard_kill(self):
     for p in (self.bench, self.proc, self.post_proc):
       if p is not None:
         p.kill()
+
+  def idle(self):
+    return self.proc is None and self.post_proc is None and self.bench is None
 
   def solver_done(self, code, _status):
     self.poll_log()
     self.timer.stop()
     wall = time.monotonic() - self.t0 if self.t0 else 0.0
     self.append(f'\n[求解器退出] exit code = {code}, 壁钟 {wall:.1f} s\n')
+    last = runner.latest_step(self.run_dir) if self.run_dir else None
+    if last:
+      self.append(f'[续算] 最新流场 {last}\n       填到 ① 页「起始流场」即可接着这个流场算\n')
     self.proc = None
+    if self.idle():
+      self.kill_timer.stop()
     self.run_done = True
     self.data = (self.cfg_path, self.run_dir)
     self.btn_run.setEnabled(True)
@@ -960,6 +1034,8 @@ class MainWindow(QMainWindow):
   def post_done(self, code, _status):
     self.append(f'\n[后处理退出] exit code = {code}\n')
     self.post_proc = None
+    if self.idle():
+      self.kill_timer.stop()
     self.btn_post.setEnabled(True)
     self.btn_stop.setEnabled(self.proc is not None)
     self.status.setText(f'完成 (post exit {code})')
@@ -1024,14 +1100,25 @@ class MainWindow(QMainWindow):
       ans = QMessageBox.question(
         self,
         '确认退出',
-        '／'.join(running) + ' 正在运行, 关闭窗口会终止它。确定退出？',
+        '／'.join(running)
+        + ' 正在运行。关闭窗口会先请它收尾（求解器会写下当前步流场），最多等 15 秒。确定退出？',
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.No,
       )
       if ans != QMessageBox.StandardButton.Yes:
         event.ignore()
         return
+      for p in (self.bench, self.proc, self.post_proc):
+        if p is not None:
+          p.terminate()
+          p.waitForFinished(15000)
+          if p.state() != QProcess.ProcessState.NotRunning:
+            p.kill()
     event.accept()
+
+
+def _short_path(path, limit=72):
+  return path if len(path) <= limit else '…' + path[-(limit - 1) :]
 
 
 def main():

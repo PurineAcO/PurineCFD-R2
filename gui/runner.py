@@ -20,7 +20,7 @@ TEMPLATE_BUILTIN = '（内置默认）'
 DEFAULT_L = {'cylinder': 1.0, 'naca0012': 1.0, 'oat15a': 0.23}
 DEFAULT_MA, DEFAULT_T, DEFAULT_RE = 0.2, 300.0, 1000.0
 DEFAULT_SOLVER = {
-  'max_steps': 800,
+  'end_step': 800,
   'cfl': 100.0,
   'dump_interval': 25,
   'convergence_interval': 10,
@@ -110,7 +110,7 @@ def make_run_dir(case, alpha):
   return number, path
 
 
-def write_config(case, template, number, run_dir, mesh, structured, solver, far):
+def write_config(case, template, number, run_dir, mesh, structured, solver, far, restart=''):
   cfg = json.loads(json.dumps(template))
   base = case_dir(case)
   cfg['io'] = dict(cfg.get('io', {}))
@@ -121,6 +121,10 @@ def write_config(case, template, number, run_dir, mesh, structured, solver, far)
     cfg['io']['structured'] = os.path.relpath(structured, base)
   else:
     cfg['io'].pop('structured', None)
+  if restart:
+    cfg['io']['restart'] = os.path.relpath(restart, base)
+  else:
+    cfg['io'].pop('restart', None)
   cfg['solver'] = solver
   cfg['farfield'] = dict(Ma=far['Ma'], T=far['T'], p=far['p'], alpha=far['alpha'])
   path = os.path.join(base, f'_run_{number:02d}.json')
@@ -196,7 +200,31 @@ def thread_candidates():
   return out or [cpu]
 
 
-def write_bench_config(case, template, mesh, structured, solver, far, threads, out_dir):
+def restart_step(path):
+  """从 step_*.dat 的 TITLE 行读步号, 读不出来返回 None."""
+  try:
+    with open(path, encoding='utf-8', errors='replace') as f:
+      head = f.readline()
+  except OSError:
+    return None
+  hit = re.search(r'step\s+(\d+)', head)
+  return int(hit.group(1)) if hit else None
+
+
+def latest_step(run_dir):
+  """run 目录里步号最大的场文件, 没有就返回 None."""
+  best, best_n = None, -1
+  for path in glob.glob(os.path.join(run_dir, 'step_*.dat')):
+    try:
+      n = int(os.path.basename(path)[5:11])
+    except ValueError:
+      continue
+    if n >= best_n:
+      best, best_n = path, n
+  return best
+
+
+def write_bench_config(case, template, mesh, structured, solver, far, threads, out_dir, restart=''):
   """测速配置: 只跑少量定常预热步 + 1 个物理步, 输出全部落在 out_dir 内."""
   cfg = json.loads(json.dumps(template))
   base = case_dir(case)
@@ -208,8 +236,13 @@ def write_bench_config(case, template, mesh, structured, solver, far, threads, o
     cfg['io']['structured'] = os.path.relpath(structured, base)
   else:
     cfg['io'].pop('structured', None)
+  if restart:
+    cfg['io']['restart'] = os.path.relpath(restart, base)
+  else:
+    cfg['io'].pop('restart', None)
   s = json.loads(json.dumps(solver))
   s['max_steps'] = 1
+  s.pop('end_step', None)  # max_steps 与 end_step 互斥
   s['dump_interval'] = 1000
   s['threads'] = threads
   u = s.setdefault('urans', json.loads(json.dumps(DEFAULT_SOLVER['urans'])))

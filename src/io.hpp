@@ -6,6 +6,7 @@
 #include "udf.hpp"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -20,6 +21,8 @@
 bool open_log(const char* path);
 // 输出流场
 bool dump_field(int step);
+// 从流场文件读回初场, 并回传文件里记录的步号
+bool load_field(const char* path, int& step);
 // 读取config.json
 bool config::load(const char* path);
 
@@ -142,6 +145,50 @@ static bool count(const Json& object, const char* key, int& out) {
     return true;
 }
 
+// 从dump_field写出的文件读回流场; x,y 用来确认这确实是本网格算出来的流场
+inline bool load_field(const char* path, int& step) {
+    std::ifstream stream(path);
+    if (!stream) { return fail("Cannot open restart field: " + std::string(path)); }
+    std::string line;
+    step = 0;
+    if (!std::getline(stream, line)) { return fail("restart field is empty"); }
+    const size_t tag = line.find("step ");
+    if (tag != std::string::npos) { step = (int)std::strtol(line.c_str() + tag + 5, nullptr, 10); }
+    if (step < 0) { return fail("restart field has a negative step number"); }
+    if (!std::getline(stream, line) || line.find("VARIABLES") == std::string::npos) {
+        return fail("restart field is missing the VARIABLES header");
+    }
+    for (int i = 0; i < cc::cell_num; i++) {
+        double x = 0.0, y = 0.0, rho = 0.0, u = 0.0, v = 0.0, T = 0.0, p = 0.0, ma = 0.0,
+               nu = 0.0;
+        if (!(stream >> x >> y >> rho >> u >> v >> T >> p >> ma >> nu)) {
+            return fail("restart field has fewer cells than the mesh, stopped at cell " +
+                        std::to_string(i + 1));
+        }
+        cc::cell_class& cell = cc::CellList[i];
+        if (std::abs(x - cell.center.x) > 1e-6 * std::max(1.0, std::abs(cell.center.x)) ||
+            std::abs(y - cell.center.y) > 1e-6 * std::max(1.0, std::abs(cell.center.y))) {
+            return fail("restart field does not match the mesh, first at cell " +
+                        std::to_string(i + 1));
+        }
+        if (!std::isfinite(rho) || rho <= 0.0 || !std::isfinite(u) || !std::isfinite(v) ||
+            !std::isfinite(T) || T <= 0.0 || !std::isfinite(nu) || nu < 0.0) {
+            return fail("restart field has an invalid state at cell " + std::to_string(i + 1));
+        }
+        cell.phy = cc::vecp(rho, u, v, T);
+        cell.form_otherphy();
+        cell.form_conservative();
+        cell.tur.miubl = nu;
+    }
+    double extra = 0.0;
+    if (stream >> extra) { return fail("restart field has more cells than the mesh"); }
+    for (cc::face_class& face : cc::FaceList) {
+        if (face.type == cc::INTER) { face.face_physic_mid(); }
+    }
+    printf("流场读入 OK: %s  步号 %d  %d 个单元\n", path, step, cc::cell_num);
+    return true;
+}
+
 // 读取路径字符串, 相对配置文件所在目录解析并做规范化
 static bool path_value(const Json& object, const char* key, const std::filesystem::path& base,
                        std::string& out, std::error_code& error) {
@@ -189,9 +236,9 @@ inline bool config::load(const char* path) {
     const Json& solver = root.at("solver");
     const Json& far = root.at("farfield");
     // 各节的键白名单; io 的 structured 只在网格带结构化信息时出现
-    if (!keys(io, {"mesh", "log", "field"}, {"structured"}) ||
-        !keys(solver, {"max_steps", "cfl", "dump_interval", "convergence_interval"},
-              {"threads", "urans"}) ||
+    if (!keys(io, {"mesh", "log", "field"}, {"structured", "restart"}) ||
+        !keys(solver, {"cfl", "dump_interval", "convergence_interval"},
+              {"max_steps", "end_step", "threads", "urans"}) ||
         !keys(far, {"Ma", "T", "p", "alpha"})) {
         return false;
     }
@@ -210,6 +257,11 @@ inline bool config::load(const char* path) {
         structer::ifstructer = true;
         if (!path_value(io, "structured", base, structer::adjacency, error)) { return false; }
     }
+    // restart 给出起始流场文件; 缺省表示从自由来流初始化
+    if (io.contains("restart") &&
+        !path_value(io, "restart", base, cc::restartpath, error)) {
+        return false;
+    }
     // 日志不得覆盖任何输入文件
     const std::string config_path =
         std::filesystem::absolute(path, error).lexically_normal().string();
@@ -217,12 +269,28 @@ inline bool config::load(const char* path) {
         return fail("The log path must not overwrite an input file");
     }
     // 求解器参数
-    int max_steps = 0, dump_interval = 0, conv_interval = 0;
-    if (!count(solver, "max_steps", max_steps) || !count(solver, "dump_interval", dump_interval) ||
+    int dump_interval = 0, conv_interval = 0;
+    if (!count(solver, "dump_interval", dump_interval) ||
         !count(solver, "convergence_interval", conv_interval)) {
         return false;
     }
     if (conv_interval < 2) { return fail("convergence_interval must be at least 2"); }
+    // 步数两种给法: max_steps 是本趟步数(增量), end_step 是目标步号(绝对, 续算时最直观)
+    long long max_steps = 0, end_step = 0;
+    if (solver.contains("max_steps") && solver.contains("end_step")) {
+        return fail("max_steps and end_step are mutually exclusive");
+    }
+    if (solver.contains("max_steps")) {
+        int n = 0;
+        if (!count(solver, "max_steps", n)) { return false; }
+        max_steps = n;
+    } else if (solver.contains("end_step")) {
+        int n = 0;
+        if (!count(solver, "end_step", n)) { return false; }
+        end_step = n;
+    } else {
+        return fail("missing configuration key: max_steps or end_step");
+    }
     // threads 缺省表示按可用物理核心自动选择
     int threads = 0;
     if (solver.contains("threads") && !count(solver, "threads", threads)) { return false; }
@@ -264,6 +332,7 @@ inline bool config::load(const char* path) {
     cc::testpath = log_path;
     cc::fieldpath = field_path;
     cc::max_step = max_steps;
+    cc::end_step = end_step;
     cc::threads = threads;
     fatime::CFL = cfl;
     dump_step = dump_interval;

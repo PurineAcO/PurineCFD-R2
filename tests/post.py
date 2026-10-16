@@ -928,8 +928,9 @@ if a.readme:
     lab = 'OAT15A 定常 RANS' if P['phase'] == 'S' else 'OAT15A 抖振 URANS'
   num = []
   if P['phase'] == 'U':
+    total = sv.get('end_step') or sv.get('max_steps')
     num.append(f'物理时间步 dt = {uv["dt"]:g} s（每抖振周期约 {1 / f0 / uv["dt"]:.0f} 步）')
-    num.append(f'物理步数 {sv["max_steps"]}，t_end = {uv["dt"] * sv["max_steps"]:.4f} s')
+    num.append(f'物理步数 {total}，t_end = {uv["dt"] * total:.4f} s')
     num.append(
       f'内迭代最多 {uv["inner"]} 次'
       + (f'（tol {uv["inner_tol"]:g}）' if 'inner_tol' in uv else '')
@@ -940,7 +941,7 @@ if a.readme:
   else:
     num.append(
       f'定常迭代 {uv.get("steady_iters")} 步（CFL 2 → {uv.get("steady_cfl"):g}），'
-      f'RANS 段步数 {sv["max_steps"]}（CFL = {sv["cfl"]:g}）'
+      f'RANS 段步数 {sv.get("end_step") or sv.get("max_steps")}（CFL = {sv["cfl"]:g}）'
     )
   num.append(
     f'输出间隔：场 {sv["dump_interval"]} 步 / 历史 {sv["convergence_interval"]} 步'

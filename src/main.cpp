@@ -9,9 +9,14 @@
 #include "readmesh.hpp"
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+
+// 收到 SIGINT/SIGTERM 只置位, 由主循环在物理步之间响应: 写完当前步流场再退出
+static volatile std::sig_atomic_t stop_requested = 0;
+static void handle_stop(int) { stop_requested = 1; }
 
 #ifdef PURINE_JAC_FULL
 inline double flow_step_select(double dt,double cfl){ return dual_full::flow_step(dt,cfl); }
@@ -109,6 +114,8 @@ static void add_seed(double amp) {
 int main(int argc, char** argv) {
     const char* cfg = argc > 1 ? argv[1] : "config.json";
     if (!config::load(cfg)) return 1;
+    std::signal(SIGINT, handle_stop);
+    std::signal(SIGTERM, handle_stop);
     if (urans::dt <= 0.0) {
         fprintf(stderr, "Error: solver.urans is required\n");
         return 1;
@@ -130,7 +137,17 @@ int main(int argc, char** argv) {
     // LSCB预处理必须在HALO之前: 虚网格没有几何
     allcell least_square_cell_based_preprocess(icell(i));
     HALO_structer_mesh();
-    if (urans::seed > 0.0) add_seed(urans::seed * std::hypot(FAR_DEFINE.u, FAR_DEFINE.v));
+    int restart_step = 0;
+    if (!cc::restartpath.empty() && !load_field(cc::restartpath.c_str(), restart_step)) return 1;
+    if (!cc::restartpath.empty()) {
+        printf("续算: 从 step %d 起, 物理时间 t = %.6e s 起算\n", restart_step,
+               restart_step * urans::dt);
+        if (urans::steady_iters > 0) {
+            printf("注意: steady_iters=%d, 读入的流场会先被定常迭代改掉\n", urans::steady_iters);
+        }
+    } else if (urans::seed > 0.0) {
+        add_seed(urans::seed * std::hypot(FAR_DEFINE.u, FAR_DEFINE.v));
+    }
 
     FILE* hist = fopen((cc::fieldpath + "/history.csv").c_str(), "w");
     FILE* wall =
@@ -146,8 +163,22 @@ int main(int argc, char** argv) {
     };
     double cl = 0.0, cd = 0.0;
 
+    // 收尾: 需要时先写下当前流场再关文件, save_step < 0 表示不用写
+    auto finish = [&](int code, const char* why, int save_step) {
+        if (save_step >= 0) {
+            allcell icell(i).prim();
+            if (!dump_field(save_step)) { code = 1; }
+            printf("%s: 已保存 step %d 的流场到 %s\n", why, save_step, cc::fieldpath.c_str());
+        }
+        fclose(hist);
+        if (wall) fclose(wall);
+        if (code == 0) { printf("Done in %.1fs\n", elapsed()); }
+        return code;
+    };
+
     // 定常隐式迭代给URANS初场, CFL在前200步从2线性增大到steady_cfl
     for (int it = 1; it <= urans::steady_iters;) {
+        if (stop_requested) { return finish(0, "用户中断定常迭代", it - 1); }
         const double cfl =
             std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0) * cfl_scale;
         save_state();
@@ -162,7 +193,7 @@ int main(int argc, char** argv) {
             cfl_scale *= 0.5;
             if (cfl_scale < 1e-3) {
                 printf("CFL 已降到下限仍不收敛, 放弃\n");
-                return 1;
+                return finish(1, "定常迭代不收敛", it - 1);
             }
             continue;
         }
@@ -178,12 +209,21 @@ int main(int argc, char** argv) {
     }
     if (urans::steady_iters > 0) {
         allcell icell(i).prim();
-        if (!dump_field(0)) return 1;
+        if (!dump_field(restart_step)) return 1;
     }
 
     // URANS: 每个物理步内做最多inner次隐式伪时间迭代
-    double t = 0.0;
-    for (int n = 1; n <= cc::max_step; n++) {
+    const int step_0 = restart_step; // 续算时接着文件里的步号往下数
+    const int last_step = cc::end_step > 0 ? (int)cc::end_step : step_0 + (int)cc::max_step;
+    if (last_step <= step_0) {
+        printf("Error: end_step %d 不大于起始步号 %d, 没有步要跑\n", last_step, step_0);
+        fclose(hist);
+        if (wall) fclose(wall);
+        return 1;
+    }
+    printf("步号区间: %d -> %d, 共 %d 步\n", step_0 + 1, last_step, last_step - step_0);
+    double t = (double)step_0 * urans::dt;
+    for (int n = step_0 + 1; n <= last_step; n++) {
 #pragma omp parallel for schedule(static)
         allcell {
             icell(i).lastconser = icell(i).conser;
@@ -215,7 +255,7 @@ int main(int argc, char** argv) {
             cfl_scale *= 0.5;
             if (cfl_scale < 1e-3) {
                 printf("CFL 已降到下限仍不收敛, 放弃\n");
-                return 1;
+                return finish(1, "该步发散", n - 1);
             }
         }
         fatime::CFL = cfl_nom;
@@ -224,20 +264,18 @@ int main(int argc, char** argv) {
         wall_forces(cl, cd);
         fprintf(hist, "U,%d,%.8e,%d,%.6e,%.6e,%.8f,%.8f\n", n, t, k, r0, r, cl, cd);
         fflush(hist);
-        if (n % config::conv_step == 0 || n == 1) {
+        if (n % config::conv_step == 0 || n == step_0 + 1) {
             printf("step %6d  t %.5e  inner %2d  res %.3e -> %.3e  Cl %.5f  Cd %.5f  "
                    "clip %5d  [%.0fs]\n",
                    n, t, k, r0, r, cl, cd, dual_full::n_clip, elapsed());
             fflush(stdout);
         }
         if (wall && n % urans::wall_interval == 0) write_wall_cp(wall, n, t);
+        if (stop_requested) { return finish(0, "用户中断", n); }
         if (n % config::dump_step == 0) {
             allcell icell(i).prim();
             if (!dump_field(n)) return 1;
         }
     }
-    fclose(hist);
-    if (wall) fclose(wall);
-    printf("Done in %.1fs\n", elapsed());
-    return 0;
+    return finish(0, nullptr, -1);
 }
