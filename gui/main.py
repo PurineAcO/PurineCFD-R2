@@ -43,6 +43,7 @@ POST_CURVES = (
   ('residual', '残差历程'),
   ('cp_dist', 'Cp 分布'),
   ('cp_rms', 'Cp 脉动 RMS'),
+  ('cp_mean', '时均 Cp 分布'),
   ('probe', '探针 Cp / PSD'),
   ('sequence', '末 6 帧纹影'),
   ('readme', 'README.md'),
@@ -61,6 +62,13 @@ MIN_POSITIVE = {
 }
 # 这几个键 C++ 侧默认就是 0(关), 但显式写 0 会被 io.hpp 判非法, 所以填 0 时不写进 JSON
 ZERO_MEANS_OFF = ('urans.steady_iters', 'urans.wall_interval')
+# 云图面板的悬停说明
+PANEL_HINTS = {
+  'div_uv': 'div(u) = ∂u/∂x + ∂v/∂y，离散散度本身（低马赫下多为离散误差）',
+  'div_rho': '-(u·∇ρ)/ρ，由连续性方程与 div(u) 等价，与纹影同源',
+  'vorticity': 'ω L/U，无量纲涡量',
+  'schlieren': 'exp(-15|∇ρ|/p99)，纹影',
+}
 FIELD_LABELS = {
   'max_steps': '结束步号',
   'end_step': '结束步号',
@@ -429,6 +437,7 @@ class MainWindow(QMainWindow):
     for i, name in enumerate(runner.PANELS):
       c = QCheckBox(name)
       c.setChecked(True)
+      c.setToolTip(PANEL_HINTS.get(name, name))
       self.panels[name] = c
       grid.addWidget(c, i % 5, i // 5)
     g2v.addLayout(grid)
@@ -669,7 +678,7 @@ class MainWindow(QMainWindow):
       wall=None,
       **{
         k: self.pk[k].isChecked()
-        for k in ('history', 'residual', 'cp_dist', 'cp_rms', 'probe', 'sequence')
+        for k in ('history', 'residual', 'cp_dist', 'cp_rms', 'cp_mean', 'probe', 'sequence')
       },
     )
 

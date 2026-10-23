@@ -2,8 +2,9 @@
 
 二维有限体积 URANS 求解器，当前版本2.3.3
 
-- **2.3.3** 增强了求解器的鲁棒性，即使用包括边界在内完全解析的Jacobi进行迭代，还增加了自适应CFL稳定，抑制了远场发散。改版还调整了求解器源码文件的组织。
-- **2.3.1** 起，双时间步的隐式求解使用**完整的 4×4 块 Jacobi**（[dualtime_full.hpp](src/dualtime_full.hpp)）：对角块与相邻块由对流 Jacobi $A_n$ 、Roe 耗散矩阵 $\hat{A}_n$ 、黏性梯度响应 $T_f$ 、冻结梯度 $B_f$ 组装，不再用单个标量谱半径近似。编译期由 `-DPURINE_JAC_FULL` 选择（对应 CMake 选项 `PURINE_JAC_FULL`，默认 ON）；关掉则退回 2.3.0 的标量版本 [dualtime.hpp](src/dualtime.hpp)。
+- **2.3.3** Update:修改了双时间步的bug，详见提交说明
+- **2.3.3** 增强了求解器的鲁棒性：引入包括边界在内完全解析的 Jacobi、自适应 CFL 稳定，抑制了远场发散；隐式双时间步收敛到单一模块 [implict.hpp](src/implict.hpp)，对角块与相邻块由对流 Jacobi $A_n$ 、Roe 耗散矩阵 $\hat{A}_n$ 、黏性梯度响应 $T_f$ 、冻结梯度 $B_f$ 组装。
+- **2.3.1** 起双时间步改用完整的 4×4 块 Jacobi，取代 2.3.0 的标量谱半径近似。
 
 ## 构建与运行
 
@@ -33,9 +34,8 @@ CMake 选项：
 
 | 选项 | 默认 | 作用 |
 | --- | --- | --- |
-| `PURINE_JAC_FULL` | ON | 定义 `PURINE_JAC_FULL`，启用完整 4×4 块 Jacobi |
 | `PURINE_NATIVE` | OFF | 加 `-march=native` |
-| `PURINE_SANITIZE` | OFF | 加 ASan/UBSan（另有一个 `debug` 目标编 [tests/debug.cpp](tests/debug.cpp) 检验台） |
+| `PURINE_SANITIZE` | OFF | 加 ASan/UBSan |
 
 ### 使用CLI运行
 
@@ -124,7 +124,7 @@ WSL 用户需要 WSLg（`echo $DISPLAY` 有输出即可）。WSL 发行版默认
 ### OAT15A 抖振（[urans_m073a35_re33e6.json](cases/oat15a/urans_m073a35_re33e6.json)）
 
 网格用 `cases/oat15a/icm_mesh.txt`（62591 单元、474 个壁面面、不带结构化邻接表）。配制为「1500 步定常预热
-（CFL 2→50）+ 2000 物理步」，壁钟约 2 小时（96 线程，每物理步 3.5–4.0 s）。
+（CFL 2→50）+ 2000 物理步」，32 线程下每物理步约 2.7 s，全程壁钟约 1.5 小时。
 
 | 工况 | dt | 伪时间 CFL | 后半段 Cl | 后半段 Cd | 主频 / St | 激波 x/c |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -143,7 +143,11 @@ WSL 用户需要 WSLg（`echo $DISPLAY` 有输出即可）。WSL 发行版默认
 
 `farfield.alpha` 是以度为单位、从 +x 方向逆时针为正的来流迎角，取值需满足 $|\alpha|<90$。`farfield.p` 是来流静压，要按雷诺数给工况就反算。
 
-线程数由 `OMP_NUM_THREADS` 决定（**优先于** `solver.threads`），未设置时取 `omp_get_max_threads()`（进程可用核数，SMT 按硬件线程计数），二者都受 `OMP_THREAD_LIMIT` 限制。本机实测最佳线程数：圆柱与 NACA0012 都是 32（8–128 扫描）。
+线程数由 `OMP_NUM_THREADS` 决定（**优先于** `solver.threads`），未设置时取 `omp_get_max_threads()`（进程可用核数，SMT 按硬件线程计数），二者都受 `OMP_THREAD_LIMIT` 限制。
+本机实测：圆柱、NACA0012 与 OAT15A 都是 **32 线程**最快。
+以 OAT15A 网格（62591 单元）为例，单次 `flow_step + sa_step` 的耗时随线程数变化为
+4 线程 129 ms / 8 线程 86 ms / 16 线程 59 ms / **32 线程 49 ms** / 64 线程 56 ms / 96 线程 61 ms / 128 线程 62 ms，
+32 线程之后受内存带宽与同步开销拖累、反而变慢。
 
 未知字段、重复键和无效值都会报错；**所有文件路径都相对配置文件所在目录解析**。
 
@@ -184,7 +188,7 @@ Jacobi 对拍。
 | 网格与几何 | [readmesh.hpp](src/readmesh.hpp)、[geometry.hpp](src/geometry.hpp)、[HALO.hpp](src/HALO.hpp) | 读入与连接拓扑、面积/中心/带长面法向；结构化网格的虚拟单元与远场插值 |
 | 物性与初边值 | [physic.hpp](src/physic.hpp)、[initialize.hpp](src/initialize.hpp)、[udf.hpp](src/udf.hpp)、[boundary.hpp](src/boundary.hpp) | Sutherland 黏度等物性、来流初始化、无滑移绝热壁面与亚声速特征远场 |
 | 空间离散 | [interpolate.hpp](src/interpolate.hpp)、[grad.hpp](src/grad.hpp)、[convect.hpp](src/convect.hpp)、[dissipation.hpp](src/dissipation.hpp)、[SA.hpp](src/SA.hpp) | MUSCL 重构与面插值、最小二乘单元梯度与面梯度、Roe 通量差分裂（JST 人工耗散可选）、SA 湍流通量与源项 |
-| 时间推进 | [dualtime.hpp](src/dualtime.hpp)、[dualtime_full.hpp](src/dualtime_full.hpp) | 双时间步：BDF1 外迭代与伪时间内迭代；块 Jacobi 组装与对称 Gauss-Seidel 求解 |
+| 时间推进 | [implict.hpp](src/implict.hpp)、[dualtime.hpp](src/dualtime.hpp) | 双时间步：BDF1 外迭代与伪时间内迭代；块 Jacobi 组装与对称 Gauss-Seidel 求解（`implict.hpp` 解流动方程，`dualtime.hpp` 解 SA 方程） |
 | 驱动与输出 | [main.cpp](src/main.cpp)、[io.hpp](src/io.hpp) | 配置解析、主循环、日志与流场输出 |
 
 `timarch.hpp`（显式时间推进，2.2.x版本）、`residual.hpp`、`parallel.hpp` 目前不被引用，为保留模块。
@@ -202,7 +206,7 @@ $$\frac{V}{\Delta t}\left(Q^{n+1}-Q^{n}\right)+R\left(Q^{n+1}\right)=0$$
 $$\left[\frac{V}{\Delta\tau}+\frac{V}{\Delta t}+\frac{\partial R}{\partial Q}\right]\Delta Q=-\left[R\left(Q^{k}\right)+\frac{V\left(Q^{k}-Q^{n}\right)}{\Delta t}\right],\qquad \frac{V}{\Delta\tau}=\frac{1}{\mathrm{cfl}}\sum_{f}\lambda_{f}$$
 
 $\Delta t\to 0$ 时退化为定常隐式迭代。线性系统用按单元编号分块的对称 Gauss-Seidel 扫描（`block_sgs`）求解：块内取本遍最新值、块间取上一遍的值。
-**注意：分块数等于 OpenMP 线程数**（[dualtime.hpp](src/dualtime.hpp) 里 `lo = cell_num*tid/nt`、`hi = cell_num*(tid+1)/nt`），
+**注意：分块数等于 OpenMP 线程数**（[implict.hpp](src/implict.hpp) 里 `lo = cell_num*tid/nt`、`hi = cell_num*(tid+1)/nt`），
 所以改线程数改的是**迭代算子本身**，而不只是浮点归约顺序——残差下降、收敛路径、乃至混沌的 URANS 轨迹都会随之变化。
 线程越多块越小，块间耦合越弱（越接近纯 Jacobi），内迭代越难收敛；线程越少块越大，隐式耦合越强、通常更稳但更慢。
 要复现某个结果，必须用同样的线程数。2.3.1 起 $\partial R/\partial Q$ 取**完整的 4×4 块 Jacobi**，对角块与相邻块分别为
@@ -236,7 +240,7 @@ step    860 发散: 12 个坏单元, 回退上一流场, CFL x1.0000 -> x0.5000
 ```
 
 然后**回退到上一个有效流场，并把伪时间 CFL 减半重试这一步**；CFL 一路减到 1e-3 仍不收敛才放弃，
-放弃前会先把回退后的流场写盘（见「续算与中断保存」）再返回非零码。所以：
+放弃前会先把回退后的流场写盘（见「从中间流场启动」）再返回非零码。所以：
 
 - 日志里出现 `发散: ... 回退` 不等于这次运行失败，只是这一步自动降了 CFL
 - 只要没有 `CFL 已降到下限仍不收敛, 放弃`，整趟就是正常跑完的
@@ -245,7 +249,7 @@ step    860 发散: 12 个坏单元, 回退上一流场, CFL x1.0000 -> x0.5000
 
 ## URANS（双时间步）
 
-`./build/purinecfd <配置>` 运行 URANS，与 Fluent 密度基隐式求解器的做法一致；标量版算法在 [dualtime.hpp](src/dualtime.hpp)，2.3.1 的完整 Jacobi 版在 [dualtime_full.hpp](src/dualtime_full.hpp)：
+`./build/purinecfd <配置>` 运行 URANS，与 Fluent 密度基隐式求解器的做法一致。流动方程的隐式步在 [implict.hpp](src/implict.hpp)，SA 方程的隐式步在 [dualtime.hpp](src/dualtime.hpp)：
 
 - 外迭代：物理时间用一阶后向欧拉（BDF1），方程见“数值约定”。
 - 内迭代：伪时间隐式推进；2.3.1 起 $\partial R/\partial Q$ 取完整的 4×4 块 Jacobi（见“数值约定”），按单元编号分块做对称 Gauss-Seidel 扫描。
@@ -268,7 +272,7 @@ step    860 发散: 12 个坏单元, 回退上一流场, CFL x1.0000 -> x0.5000
 ## 后处理
 
 求解器在 `io.field` 目录下写出 `history.csv`（每步 Cl、Cd、内迭代次数与残差）、`wall_cp.dat`、
-`step_*.dat`（列依次为 x、y、ρ、u、v、T、p、Ma、ν̃）。两个脚本都只读「配置 + run 目录」：
+`step_*.dat`（列依次为 x、y、ρ、u、v、T、p、Ma、ν̃）。下面几个脚本都只读「配置 + run 目录」：
 
 ```sh
 # 曲线 / 云图 / PSD / README，一次出 15 张图
@@ -286,8 +290,14 @@ uv run --with numpy --with matplotlib --with pillow python tests/vort_anim.py \
 - `--out` 指定 run 目录；配置里的 `io.field` 是占位符时**必须**用它
 - 统计量：力系数均值与范围、主频与 St（Hann 窗 + 补零 FFT 定位峰，再按原始分辨率 $1/T$ 抛物线插值）、
   壁面探针 PSD、上表面激波位置序列、Cp 脉动 RMS
-- `--panels u,v,rho,...` 挑云图面板；`--no-history` / `--no-residual` / `--no-cp-dist` / `--no-cp-rms` /
-  `--no-probe` / `--no-sequence` 关掉对应输出（默认全部开启）
+- `--panels u,v,rho,...` 挑云图面板（`u` `v` `rho` `miubl` `T` `Ma` `Cp` `schlieren` `vorticity`
+  `div_uv` `div_rho`）；`--no-history` / `--no-residual` / `--no-cp-dist` / `--no-cp-rms` /
+  `--no-cp-mean` / `--no-probe` / `--no-sequence` 关掉对应输出（默认全部开启）
+- 两种散度面板：`div_uv` 是离散散度 $\partial u/\partial x+\partial v/\partial y$，`div_rho` 是用连续性方程
+  与之等价的密度物料导数 $-(\boldsymbol u\cdot\nabla\rho)/\rho$；两者都以 0 为中心、按 99% 分位对称定色标。
+  它们与纹影同源但不相同：纹影是 $|\nabla\rho|$（全方向、无符号），散度只含沿流向那一份且带正负号
+  （压缩 <0、膨胀 >0）。低马赫（如圆柱 Ma=0.2）下真实的 $\nabla\cdot\boldsymbol u$ 极小，图上看到的多为离散误差
+- `cp_mean.png` / `.dat`：后半段各帧壁面 Cp 的时均与 ±1σ 带（抖振算例的标准图，激波脚处带最宽）
 - 求解器非正常退出也能跑：会插一句「求解器在 step N 发散」，统计只覆盖已有的步数
 - 结构化算例（`cylinder` / `naca0012`）的配置若缺 `io.structured`，会打印提示并退回非结构后端渲染
 
@@ -310,7 +320,7 @@ uv run --with numpy --with matplotlib --with pillow python tests/vort_anim.py \
 | ① 算例 | 算例（cylinder / naca0012 / oat15a）、配置模板（首项是内置默认模板）、网格文件、结构化邻接表、起始流场（可留空，填了就接着那个场算）、输出目录 |
 | ② 来流 | 马赫数、雷诺数、静温 T、参考长度 L、攻角 α；下方实时显示换算出的 μ / a / U∞ / ρ∞ / p∞ / q∞ |
 | ③ 求解 | 求解参数**表单**，字段由所选模板的 `solver` 段动态生成，不暴露 JSON |
-| ④ 后处理 | 曲线/统计与 9 个云图面板的复选框、探针位置、u 色标 |
+| ④ 后处理 | 曲线/统计与 11 个云图面板的复选框、探针位置、u 色标 |
 | ⑤ 运行 | 可执行文件、生成配置 JSON、自动测线程数、开始运行 / 仅跑后处理 / 停止 |
 | ⑥ 控制台 | 求解器日志 + stderr + 后处理输出 |
 

@@ -110,6 +110,7 @@ ap.add_argument('--no-history', action='store_true', help='不输出 history.png
 ap.add_argument('--no-residual', action='store_true', help='不输出 residual.png')
 ap.add_argument('--no-cp-dist', action='store_true', help='不输出 cp_dist.png')
 ap.add_argument('--no-cp-rms', action='store_true', help='不输出 cp_rms.png/.dat')
+ap.add_argument('--no-cp-mean', action='store_true', help='不输出 cp_mean.png/.dat')
 ap.add_argument('--no-probe', action='store_true', help='不输出壁面探针 Cp / PSD 组')
 ap.add_argument('--no-sequence', action='store_true', help='不输出 schlieren_sequence.png')
 a = ap.parse_args()
@@ -380,6 +381,11 @@ if P['structured']:
     vx = (ds(d['v']) * dn(y) - dn(d['v']) * ds(y)) / jac
     uy = (dn(d['u']) * ds(x) - ds(d['u']) * dn(x)) / jac
     d['vorticity'] = (vx - uy) * LREF / U
+    # 两种散度: ①离散散度本身 div(u); ②由连续性方程等价的密度物料导数 -(u.grad rho)/rho
+    ux = (ds(d['u']) * dn(y) - dn(d['u']) * ds(y)) / jac
+    vy = (dn(d['v']) * ds(x) - ds(d['v']) * dn(x)) / jac
+    d['div_uv'] = ux + vy
+    d['div_rho'] = -(d['u'] * gx + d['v'] * gy) / rr
     return {k: np.hstack([v, v[:, :1]]) for k, v in d.items()}
 
   def draw(ax, z, levels, cmap, extend):
@@ -469,6 +475,8 @@ else:
     ux, uy = nodal_grad(d['u'])
     vx, vy = nodal_grad(d['v'])
     d['vorticity'] = (vx - uy) * LREF / U
+    d['div_uv'] = ux + vy
+    d['div_rho'] = -(d['u'] * gx + d['v'] * gy) / d['rho']
     return d
 
   def draw(ax, z, levels, cmap, extend):
@@ -637,6 +645,50 @@ if rms is not None and not a.no_cp_rms:
     fmt='%.6e',
   )
   print('写出 cp_rms.png, cp_rms.dat')
+
+# ============================ 时均 Cp 分布 ============================
+# 抖振算例的标准图: 后半段各帧壁面 Cp 的时均 + 1sigma 带
+if a.no_cp_mean:
+  pass
+elif P['kind'] != 'surface':
+  print('时均 Cp: 仅对翼型(按 x/c)出图, 跳过 cp_mean.png')
+elif len(blocks) <= 1:
+  print(f'时均 Cp: wall_cp.dat 只有 {len(blocks)} 帧, 跳过 cp_mean.png')
+else:
+  tail = blocks[len(blocks) // 2 :]
+  prof = [cp_by_step[block_cp(b)[0]][1] for b in tail]
+  fig, z = plt.subplots(figsize=(8.4, 4.4))
+  rows_out = []
+  for k, (name, xv, _) in enumerate(cp_sides):
+    stack = np.array([p[k][2] for p in prof])
+    m, s = stack.mean(axis=0), stack.std(axis=0)
+    z.plot(xv, m, '-', lw=1.2, label=f'{name} mean')
+    z.fill_between(xv, m - s, m + s, alpha=0.18, lw=0, label=f'{name} ±std')
+    rows_out.append((name, xv, m, s))
+  z.set_xlabel('$x/c$')
+  z.set_ylabel('$C_p$')
+  z.invert_yaxis()
+  z.xaxis.set_major_locator(MultipleLocator(0.1))
+  z.xaxis.set_minor_locator(MultipleLocator(0.02))
+  z.tick_params(which='both', direction='in', top=True, right=True)
+  z.tick_params(which='major', length=6)
+  z.tick_params(which='minor', length=3)
+  z.grid(alpha=0.25)
+  z.legend(fontsize=8)
+  z.set_title(
+    f'{a.case}  time-mean $C_p$  Ma={far["Ma"]} alpha={far["alpha"]}deg  '
+    f'({len(tail)}/{len(blocks)} frames)'
+  )
+  fig.tight_layout()
+  fig.savefig(os.path.join(out, 'cp_mean.png'), dpi=140)
+  plt.close(fig)
+  with open(os.path.join(out, 'cp_mean.dat'), 'w', encoding='utf-8') as fp:
+    fp.write(f'# {a.case} time-mean Cp over last {len(tail)} of {len(blocks)} wall blocks\n')
+    for name, xv, m, s in rows_out:
+      fp.write(f'# side {name}\n')
+      for x_, m_, s_ in zip(xv, m, s):
+        fp.write(f'{x_:.6e} {m_:.6e} {s_:.6e}\n')
+  print('写出 cp_mean.png, cp_mean.dat')
 
 # ============================ 壁面探针: Cp(t) 与 PSD ============================
 # 上表面 x/c 探针的 Cp 时间序列 + 单段 Hann 窗 PSD; 抖振主频/St 直接从探针得到
@@ -817,6 +869,8 @@ specs = [
   ('Cp', 'jet', -1.6, 1.1, '$C_p$'),
   ('schlieren', 'gray', 0.0, 1.0, 'schlieren'),
   ('vorticity', 'jet', -4.0, 4.0, r'$\omega L/U$'),
+  ('div_uv', 'RdBu_r', 'sym', 'sym', r'$\nabla\cdot\mathbf{u}$ [1/s]'),
+  ('div_rho', 'RdBu_r', 'sym', 'sym', r'$-\mathbf{u}\cdot\nabla\rho/\rho$ [1/s]'),
 ]
 want = None if a.panels == 'auto' else ([] if a.panels == 'none' else a.panels.split(','))
 for key, cmap, lo, hi, bar in specs if sa is not None else []:
@@ -826,6 +880,13 @@ for key, cmap, lo, hi, bar in specs if sa is not None else []:
   if not np.isfinite(arr).any():
     print('跳过', key, '(全为非有限值)')
     continue
+  if lo == 'sym':  # 散度类场以 0 为中心对称定色标
+    v = float(np.nanpercentile(np.abs(arr), 99))
+    if not (np.isfinite(v) and v > 0.0):
+      print('跳过', key, '(全为 0; 不可压极限下散度本就接近 0)')
+      continue
+    lo, hi = -v, v
+    print(f'  {key}: 色标 ±{v:.3e} [1/s] (99% 分位)')
   if lo is None:
     lo = float(np.floor(np.nanmin(arr) * 20) / 20)
   if hi is None:
@@ -955,8 +1016,7 @@ if a.readme:
     f'T = {far["T"]} K，p∞ = {far["p"]:.4f} Pa，U∞ = {U:.4f} m/s',
     '- **数值设置**：' + '；'.join(num),
     f'- **网格**：`{os.path.join(os.path.dirname(a.config), cfg["io"]["mesh"])}`',
-    f'- **求解器版本**：PurineCFD-R2 {VERSION}，二进制以 `-DPURINE_JAC_FULL` 编译'
-    '（隐式求解用完整 4×4 块 Jacobi）',
+    f'- **求解器版本**：PurineCFD-R2 {VERSION}，隐式求解用完整 4×4 块 Jacobi',
     f'- **配置与运行**：`{a.config}`（其中 io.log / io.field 为 PLACEHOLDER，'
     f'运行时由脚本改写为指向本目录后执行 `OMP_NUM_THREADS=32 <二进制> <临时配置>`）',
     f'- **壁钟耗时**：{a.wall:.0f} s（进程总时间，含网格读取与初始化）'
@@ -991,10 +1051,12 @@ if a.readme:
     f'- **后处理**：`python tests/post.py {a.config} --case {a.case} --out <本目录>`'
     f'（配置里的 io.field 为 PLACEHOLDER，必须用 --out 指定本目录），输出 '
     f'`history.png`（力系数）`residual.png`（残差）`cp_dist.png`（壁面 Cp）'
-    f'`cp_rms.png` 与 `cp_rms.dat`（脉动 RMS）`schlieren_sequence.png`（纹影序列）'
-    f'与 9 张云图面板；`cp_probe_t.png`（该点 Cp(t)）与 `psd.png`（对数-对数 PSD，'
-    f'含 ±Δf 不确定带与 St 副轴）、`cp_probe_pt_psd.png`、`psd_x{a.probe:g}.dat` '
-    f'为 x/c={a.probe:g} 壁面探针（用 `--probe` 改位置）'
+    f'`cp_rms.png` 与 `cp_rms.dat`（脉动 RMS）`cp_mean.png` 与 `cp_mean.dat`（时均 Cp ± 1σ）'
+    f'`schlieren_sequence.png`（纹影序列）与 11 张云图面板；`cp_probe_t.png`（该点 Cp(t)）与 '
+    f'`psd.png`（对数-对数 PSD，含 ±Δf 不确定带与 St 副轴）、`cp_probe_pt_psd.png`、'
+    f'`psd_x{a.probe:g}.dat` 为 x/c={a.probe:g} 壁面探针（用 `--probe` 改位置）。'
+    f'云图里的 `div_uv` 是 ∂u/∂x+∂v/∂y，`div_rho` 是由连续性方程与它等价的 -(u·∇ρ)/ρ，'
+    f'两者都以 0 为中心对称定色标（99% 分位）'
   )
   open(os.path.join(out, 'README.md'), 'w', encoding='utf-8').write('\n'.join(rd) + '\n')
   print('写出 README.md')

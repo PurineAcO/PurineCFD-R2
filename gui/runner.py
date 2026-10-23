@@ -11,7 +11,19 @@ from gui import farfield
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CASES = ('cylinder', 'naca0012', 'oat15a')
-PANELS = ('u', 'v', 'rho', 'miubl', 'T', 'Ma', 'Cp', 'schlieren', 'vorticity')
+PANELS = (
+  'u',
+  'v',
+  'rho',
+  'miubl',
+  'T',
+  'Ma',
+  'Cp',
+  'schlieren',
+  'vorticity',
+  'div_uv',
+  'div_rho',
+)
 DEFAULT_BIN = os.path.join(ROOT, 'build', 'purinecfd')
 POST_PREFIX = ['uv', 'run', '--with', 'numpy', '--with', 'matplotlib', '--with', 'scipy', 'python']
 
@@ -156,7 +168,7 @@ def build_post_cmd(cfg_path, case, run_dir, opt):
     cmd.append('--u-symmetric')
   if opt['phase'] != 'auto':
     cmd += ['--phase', opt['phase']]
-  for key in ('history', 'residual', 'cp_dist', 'cp_rms', 'probe', 'sequence'):
+  for key in ('history', 'residual', 'cp_dist', 'cp_rms', 'cp_mean', 'probe', 'sequence'):
     if not opt[key]:
       cmd.append('--no-' + key.replace('_', '-'))
   return cmd

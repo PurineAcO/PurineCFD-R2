@@ -3,17 +3,16 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "physic.hpp"
-#include "udf.hpp"
 #include <cstdio>
 
 // 标准初始化
 void std_initialize();
 
 inline void std_initialize() {
-    double rho_inf = FAR_DEFINE.p / (cc::R * FAR_DEFINE.T);
-    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(FAR_DEFINE.T) / rho_inf;
+    // double rho_inf = cc::FAR_DEFINE.phy.rho;
+    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) / cc::FAR_DEFINE.phy.rho;
     allcell {
-        icell(i).phy = cc::vecp(rho_inf, FAR_DEFINE.u, FAR_DEFINE.v, FAR_DEFINE.T);
+        icell(i).phy = cc::FAR_DEFINE.phy;
         icell(i).form_otherphy();
         icell(i).tur.miubl = miubl_inf;
     }

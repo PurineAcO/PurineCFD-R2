@@ -247,14 +247,14 @@ inline int conv_step = 1;                           // 残差检查间隔
 
 // URANS双时间步参数, 对应config.json中的solver.urans
 namespace urans {
-inline double dt = 0.0;          // 物理时间步长, s
-inline int inner = 20;           // 每个物理时间步的最大内迭代次数
-inline double inner_tol = 1e-3;  // 内迭代残差相对首次内迭代的下降目标
-inline int sweeps = 4;           // 每次内迭代的对称Gauss-Seidel扫描次数
-inline int steady_iters = 0;     // URANS之前的定常隐式迭代次数, 用来给初场
-inline double steady_cfl = 50.0; // 定常迭代的CFL终值(从2线性增大到该值)
+inline double dt = 0.0;          // 物理时间步长
+inline int inner = 20;           // 最大内迭代次数
+inline double inner_tol = 1e-3;  // 内迭代残差下降指标
+inline int sweeps = 4;           // 内迭代GS扫描次数
+inline int steady_iters = 0;     // URANS之前的定常次数,
+inline double steady_cfl = 50.0; // 定常迭代的CFL终值
 inline int wall_interval = 0;    // 壁面Cp输出间隔, 0表示不输出
-inline double seed = 0.0;        // 初场反对称涡扰动幅值(相对U∞), 对称问题起振用
+inline double seed = 0.0;        // 初场反对称涡扰动幅值
 } // namespace urans
 
 // 结构化网格参数
@@ -320,7 +320,7 @@ namespace cc {
     struct mat4{
         double a[4][4] = {};
         // 使用Gauss消元法求解
-        vec4 solve4(vec4 b);
+        vec4 solve4(vec4 b) const;
         void clear();
         mat4& operator+=(const mat4& o){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]+=o.a[r][c];}return *this;}
         mat4& operator*=(const double k){for(int r=0;r<4;r++) for(int c=0;c<4;c++) {a[r][c]*=k;}return *this;}
@@ -336,7 +336,7 @@ namespace cc {
     inline cc::mat4 zeros = []{ cc::mat4 O; for(int r=0;r<4;r++) O.clear(); return O; }();
     inline mat4 operator+(mat4 a,const mat4& b){return a+=b;}
     inline mat4 operator*(const double k,mat4 A){return A*=k;}
-    inline vec4 mat4::solve4(vec4 b){
+    inline vec4 mat4::solve4(vec4 b) const {
         double m[4][4];
         for(int i=0;i<4;i++) for(int j=0;j<4;j++) m[i][j] = a[i][j];
         double r[4] = {b.c,b.x,b.y,b.e};
@@ -370,5 +370,17 @@ namespace cc {
         res.y = A.a[2][0] * b.c + A.a[2][1] * b.x + A.a[2][2] * b.y + A.a[2][3] * b.e;
         res.e = A.a[3][0] * b.c + A.a[3][1] * b.x + A.a[3][2] * b.y + A.a[3][3] * b.e;
         return res;
+    }
+
+    struct implict{
+        mat4 Bf;  // 冻结梯度粘度Jacobi
+        mat4 Tf;  // 梯度粘性Jacobi
+        mat4 Ab;  // Roe通量Jacobi
+
+        void clear();
+    };
+
+    inline void implict::clear(){
+        Bf.clear();Ab.clear();Tf.clear();
     }
 }

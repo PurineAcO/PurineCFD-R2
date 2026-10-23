@@ -39,7 +39,7 @@ WSL 发行版默认不带中文字体，`main.py` 启动时会从 `/mnt/c/Window
 | ① 算例 | 算例下拉（cylinder / naca0012 / oat15a）、配置模板下拉（第一项恒为「（内置默认）」，其后自动扫 `cases/<case>/*.json`，只列含 `io`/`solver`/`farfield` 三节的）、网格文件、结构化邻接表（可留空）、起始流场（可留空）、输出目录（开跑后自动填） |
 | ② 来流 | Ma、Re、静温 T、参考长度 L、攻角 α；下方派生量 μ / a / U∞ / ρ∞ / p∞ / q∞，随输入实时刷新 |
 | ③ 求解 | **表单，不暴露 JSON**。字段由所选模板的 `solver` 段动态生成：整数 → 计数框，小数 → 数字框，布尔 → 勾选框；`urans` 子节单独一组（该模板没有 `urans` 时整组隐藏）。行标签用中文（见 `FIELD_LABELS`），鼠标悬停在控件上显示原始键名 |
-| ④ 后处理 | 曲线/统计 7 项 + 云图面板 9 项（带全选/全不选）、探针位置 x/c、u 色标、历史段 |
+| ④ 后处理 | 曲线/统计 8 项 + 云图面板 11 项（带全选/全不选）、探针位置 x/c、u 色标、历史段 |
 | ⑤ 运行 | 可执行文件路径（记忆上次）、跑完自动后处理（默认勾）、生成配置 JSON、自动测线程数、开始运行 / 仅跑后处理 / 停止 |
 | ⑥ 控制台 | 深色等宽，求解器日志 + stderr + 后处理输出 |
 
@@ -205,6 +205,7 @@ flowchart LR
 | residual.png | `--no-residual` |
 | cp_dist.png | `--no-cp-dist` |
 | cp_rms.png/.dat | `--no-cp-rms` |
+| cp_mean.png/.dat（时均 Cp ± 1σ） | `--no-cp-mean` |
 | 探针 Cp/PSD 组 | `--no-probe` |
 | schlieren_sequence.png | `--no-sequence` |
 | README.md | `--readme` |

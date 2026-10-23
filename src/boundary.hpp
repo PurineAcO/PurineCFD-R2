@@ -3,7 +3,6 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "physic.hpp"
-#include "udf.hpp"
 #include <cmath>
 
 // 无滑移不穿透壁面
@@ -26,9 +25,9 @@ inline void noslip_wall_boundary() {
 }
 
 inline void far_field_boundary() {
-    double rho_inf = FAR_DEFINE.p / (cc::R * FAR_DEFINE.T);
-    double a_inf = get_sonic_velocity(FAR_DEFINE.T);
-    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(FAR_DEFINE.T) / rho_inf;
+    double rho_inf = cc::FAR_DEFINE.otphy.p / (cc::R * cc::FAR_DEFINE.phy.T);
+    double a_inf = get_sonic_velocity(cc::FAR_DEFINE.phy.T);
+    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) / rho_inf;
     for (cc::face_class* far : cc::FarFaces) {
         cc::cell_class* c = cc::boundary_findcell(far);
         cc::vec2 nor = far->length1_nor();
@@ -41,8 +40,8 @@ inline void far_field_boundary() {
         double a = get_sonic_velocity(c->phy.T);
         double vn = c->phy.u * nx + c->phy.v * ny;
         double vt = -1 * c->phy.u * ny + c->phy.v * nx;
-        double vn_inf = FAR_DEFINE.u * nx + FAR_DEFINE.v * ny;
-        double vt_inf = -FAR_DEFINE.u * ny + FAR_DEFINE.v * nx;
+        double vn_inf = cc::FAR_DEFINE.phy.u * nx + cc::FAR_DEFINE.phy.v * ny;
+        double vt_inf = -cc::FAR_DEFINE.phy.u * ny + cc::FAR_DEFINE.phy.v * nx;
         double Rp = vn + 2.0 * a / (cc::gamma - 1.0);
         double Rm = vn_inf - 2.0 * a_inf / (cc::gamma - 1.0);
         double vn_star = 0.5 * (Rp + Rm);
@@ -52,7 +51,7 @@ inline void far_field_boundary() {
             s = c->otphy.p / std::pow(c->phy.rho, cc::gamma);
             vt_star = vt;
         } else {
-            s = FAR_DEFINE.p / std::pow(rho_inf, cc::gamma);
+            s = cc::FAR_DEFINE.otphy.p / std::pow(rho_inf, cc::gamma);
             vt_star = vt_inf;
         }
         far->phy.u = vn_star * nx - vt_star * ny;

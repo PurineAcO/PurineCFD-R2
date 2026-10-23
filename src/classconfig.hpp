@@ -51,6 +51,8 @@ struct face_class {
     vecp phynei[2];               // 左右插值物理量
     struct otphy otnei[2];        // 左右引申物理量
 
+    implict imats;                // 非对角矩阵
+
     // 结构化网格参数
     // bool iswedir = false;       // 面方向指示
     vec4 convect; // 无粘通量
@@ -76,6 +78,7 @@ struct face_class {
     void toface_jacobi(const double (&F)[N1][N2], const double (&G)[N1][N2],
                        double (&out)[N1][N2]) const;
     mat5 toface_jacobi(const std::pair<mat5,mat5> FG) const;
+    mat4 toface_jacobi(std::pair<mat4,mat4> FG) const;
 };
 
 struct cell_class {
@@ -101,6 +104,10 @@ struct cell_class {
     double localdt = 0.0; // 当地时间步长
     turbulence tur;       // 湍流
     LSCBmatrix LSCB;      // LSCB梯度预处理矩阵
+
+    mat4 diag;                 // 对角线矩阵
+    std::pair<mat4,mat4> conj; // 对流项Jacobi
+    double lambda;             // 伪时间谱半径
 
     // 东/西/南/北侧面在本格 faces 中的下标
     short east = -1, west = -1, north = -1, south = -1;
@@ -146,6 +153,8 @@ face_class* link_face(int number);
 cell_class* link_cell(int number);
 // 对于边界面找到内部网格
 cell_class* boundary_findcell(face_class* face);
+// 找到该面的邻接网格
+cell_class* other_cell(const face_class* f,const cell_class* c);
 // 物理量是否有效
 bool field_ok(const cell_class& cell);
 // 记录异常网格编号(取最小), 用于并行循环中标记
@@ -241,6 +250,11 @@ inline cell_class* boundary_findcell(face_class* face) {
     return face->nei[0] ? face->nei[0] : face->nei[1];
 }
 
+inline cell_class* other_cell(const face_class* f,const cell_class* c){
+    if(f->type != INTER) return NULL;
+    return f->nei[0] == c ? f->nei[1] : f->nei[0];
+}
+
 inline bool field_ok(const cell_class& cell) {
     const vecp& phy = cell.phy;
     return std::isfinite(phy.rho) && phy.rho > 0.0 && std::isfinite(phy.u) &&
@@ -286,8 +300,25 @@ inline mat5 face_class::toface_jacobi(std::pair<mat5,mat5> FG) const{
     return FG.first*nor.x+FG.second*nor.y;
 }
 
+inline mat4 face_class::toface_jacobi(std::pair<mat4,mat4> FG) const{
+    return nor.x*FG.first+nor.y*FG.second;
+}
+
 inline vec2 face_class::length1_nor() {
     return vec2{nor.x / len, nor.y / len};
 }
 
 } // namespace cc
+
+namespace cc {
+
+struct far_condition {
+    vecp phy;
+    struct otphy otphy;
+    double AOA;
+    double Ma;
+};
+
+inline far_condition FAR_DEFINE;
+
+}

@@ -1,13 +1,8 @@
 #pragma once
 
-#include "HALO.hpp"
 #include "SA.hpp"
-#include "boundary.hpp"
 #include "classconfig.hpp"
 #include "config.hpp"
-#include "convect.hpp"
-#include "grad.hpp"
-#include "interpolate.hpp"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -17,58 +12,13 @@
 #endif
 
 namespace dual {
-// 计算整场残差
-void eval_residual();
-// 流动方程一次隐式伪时间步, 返回连续方程残差的L2
-double flow_step(double dt, double cfl);
-// SA方程一次隐式伪时间步, 需紧跟flow_step调用(复用其面通量与梯度)
+// SA方程一次隐式伪时间步, 需紧跟 impl::flow_step 调用(复用其面通量与隐式谱半径)
 void sa_step(double dt, double cfl);
 } // namespace dual
 
 namespace dual {
 
-inline std::vector<cc::vec4> rhs, dQ, dQold;
-inline std::vector<double> lam, diag, nrhs, dnu, dnuold;
-
-inline void eval_residual() {
-#pragma omp parallel for schedule(static)
-    allcell icell(i).prim();
-    noslip_wall_boundary();
-    far_field_boundary();
-    if (structer::ifstructer) update_ghost_field();
-#pragma omp parallel for schedule(static)
-    allfac {
-        interpolate_mid(&iface(i));
-        muscl(&iface(i));
-    }
-#pragma omp parallel for schedule(static)
-    allcell least_square_cell_based(icell(i));
-#pragma omp parallel for schedule(static)
-    allcell grad_onface(icell(i));
-#pragma omp parallel for schedule(static)
-    allfac convect_ROE(iface(i));
-#pragma omp parallel for schedule(static)
-    allcell assemble_flux(icell(i), 'R');
-#pragma omp parallel for schedule(static)
-    allfac SA::diffusion_SA(iface(i));
-#pragma omp parallel for schedule(static)
-    allcell SA::assemble_visflux(icell(i));
-}
-
-// 守恒量Q沿n(带面长)的无粘通量
-static inline cc::vec4 euler_flux(const cc::vec4& Q, double nx, double ny) {
-    const double u = Q.x / Q.c, v = Q.y / Q.c;
-    const double p = (cc::gamma - 1.0) * (Q.e - 0.5 * Q.c * (u * u + v * v));
-    const double un = u * nx + v * ny;
-    return cc::vec4(Q.c * un, Q.x * un + p * nx, Q.y * un + p * ny, (Q.e + p) * un);
-}
-
-// 面谱半径(带面长): 对流(|un|+a)S + 黏性 μeff/ρ*S²/V
-static inline double face_lambda(const cc::face_class* f, const cc::cell_class& cell) {
-    const double un = std::abs(f->phy.u * f->nor.x + f->phy.v * f->nor.y) / f->len;
-    const double Cn = std::max(4.0 / 3.0, cc::gamma / cc::Pr);
-    return (un + f->otphy.a) * f->len + Cn * f->tur.mueff / f->phy.rho * f->len * f->len / cell.vol;
-}
+inline std::vector<double> diag, nrhs, dnu, dnuold;
 
 // 内部面另一侧的单元, 边界面返回nullptr
 static inline cc::cell_class* other_cell(const cc::face_class* f, const cc::cell_class& cell) {
@@ -92,74 +42,6 @@ template <class Relax> static void block_sgs(Relax&& relax) {
         for (int c = hi - 1; c >= lo; c--)
             relax(c, lo, hi);
     }
-}
-
-inline double flow_step(double dt, double cfl) {
-    const int N = cc::cell_num;
-    if ((int)rhs.size() != N) {
-        rhs.resize(N);
-        dQ.resize(N);
-        dQold.resize(N);
-        lam.resize(N);
-        diag.resize(N);
-        nrhs.resize(N);
-        dnu.resize(N);
-        dnuold.resize(N);
-    }
-    eval_residual();
-    const double inv_dt = dt > 0.0 ? 1.0 / dt : 0.0;
-    double res2 = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : res2)
-    for (int c = 0; c < N; c++) {
-        cc::cell_class& cell = icell(c);
-        double sum = 0.0;
-        allface(cell) sum += face_lambda(cell.faces[i], cell);
-        lam[c] = sum;
-        // V/Δτ = Σλ/CFL
-        diag[c] = cell.vol * inv_dt + sum / cfl + 0.5 * sum;
-        rhs[c] = cell.convect - cell.visflux;
-        if (dt > 0.0) rhs[c] += (cell.vol * inv_dt) * (cell.conser - cell.lastconser);
-        dQ[c] = cc::vec4(0, 0, 0, 0);
-        res2 += rhs[c].c * rhs[c].c;
-    }
-    auto relax = [](int c, int lo, int hi) {
-        const cc::cell_class& cell = icell(c);
-        cc::vec4 acc = rhs[c];
-        allface(cell) {
-            const cc::face_class* f = cell.faces[i];
-            const cc::cell_class* nb = other_cell(f, cell);
-            if (!nb) continue;
-            const int j = nb->index - 1;
-            const cc::vec4& dj = (j >= lo && j < hi) ? dQ[j] : dQold[j];
-            // 本单元的外法向
-            const double s = 2 * cell.fnorm[i] - 1;
-            const double nx = s * f->nor.x, ny = s * f->nor.y;
-            acc += 0.5 * (euler_flux(nb->conser + dj, nx, ny) - euler_flux(nb->conser, nx, ny)) -
-                   (0.5 * face_lambda(f, cell)) * dj;
-        }
-        dQ[c] = acc * (-1.0 / diag[c]);
-    };
-    for (int sw = 0; sw < urans::sweeps; sw++) {
-#pragma omp parallel for schedule(static)
-        for (int c = 0; c < N; c++)
-            dQold[c] = dQ[c];
-        block_sgs(relax);
-    }
-// 更新守恒量; 若密度或内能下降超过一半则把该单元的增量减半, 保证正性
-#pragma omp parallel for schedule(static)
-    for (int c = 0; c < N; c++) {
-        const cc::vec4 Q = icell(c).conser;
-        const double ein = Q.e - 0.5 * (Q.x * Q.x + Q.y * Q.y) / Q.c;
-        double w = 1.0;
-        for (int it = 0; it < 6; it++) {
-            const cc::vec4 Qn = Q + w * dQ[c];
-            if (Qn.c > 0.5 * Q.c && Qn.e - 0.5 * (Qn.x * Qn.x + Qn.y * Qn.y) / Qn.c > 0.5 * ein)
-                break;
-            w *= 0.5;
-        }
-        icell(c).conser = Q + w * dQ[c];
-    }
-    return std::sqrt(res2 / N);
 }
 
 // SA破坏项对ν̃的导数, 近似为 2ρ*Cw1*fw*ν̃/d² (fw视为常数)
@@ -193,6 +75,13 @@ static inline double normal_dist(const cc::face_class* f, const cc::cell_class& 
 
 inline void sa_step(double dt, double cfl) {
     const int N = cc::cell_num;
+    // 本步不再依赖 dual::flow_step 预分配, 自己兜底
+    if ((int)nrhs.size() != N) {
+        nrhs.resize(N);
+        diag.resize(N);
+        dnu.resize(N);
+        dnuold.resize(N);
+    }
     const double inv_dt = dt > 0.0 ? 1.0 / dt : 0.0;
 // 守恒形式 ∂(ρν̃)/∂t + Σ(ṁν̃) - Σ(coef ∂ν̃/∂n S) - V*S_SA = 0, 未知量为ν̃
 #pragma omp parallel for schedule(static)
@@ -230,7 +119,7 @@ inline void sa_step(double dt, double cfl) {
         if (dt > 0.0)
             res += cell.vol * inv_dt *
                    (cell.conser.c * nu - cell.lastconser.c * cell.tur.miubl_former);
-        dg += cell.conser.c * (cell.vol * inv_dt + lam[c] / cfl) +
+        dg += cell.conser.c * (cell.vol * inv_dt + cell.lambda / cfl) +
               cell.vol * sa_destruction_jac(cell);
         nrhs[c] = res;
         diag[c] = dg;

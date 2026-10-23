@@ -3,7 +3,6 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "physic.hpp"
-#include "udf.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +24,8 @@ bool dump_field(int step);
 bool load_field(const char* path, int& step);
 // 读取config.json
 bool config::load(const char* path);
+// 写出壁面压力系数
+void write_wall_cp(FILE* fp, int step, double t, cc::vecp refp, double refpressure);
 
 static bool make_dirs(const std::string& path) {
     if (path.empty()) { return true; }
@@ -327,6 +328,7 @@ inline bool config::load(const char* path) {
     if (!std::isfinite(u_inf) || !std::isfinite(rho_inf) || rho_inf <= 0.0) {
         return fail("Farfield values produce an invalid thermodynamic state");
     }
+
     // 全部校验通过后再一次性写入全局状态
     cc::meshpath = mesh_path;
     cc::testpath = log_path;
@@ -337,11 +339,14 @@ inline bool config::load(const char* path) {
     fatime::CFL = cfl;
     dump_step = dump_interval;
     conv_step = conv_interval;
-    const double rad = alpha * (std::acos(-1.0) / 180.0);
-    FAR_DEFINE.u = u_inf * std::cos(rad);
-    FAR_DEFINE.v = u_inf * std::sin(rad);
-    FAR_DEFINE.T = T;
-    FAR_DEFINE.p = p;
+    cc::FAR_DEFINE.AOA = alpha * (std::acos(-1.0) / 180.0);
+    cc::FAR_DEFINE.phy.u = u_inf * std::cos(cc::FAR_DEFINE.AOA);
+    cc::FAR_DEFINE.phy.v = u_inf * std::sin(cc::FAR_DEFINE.AOA);
+    cc::FAR_DEFINE.phy.T = T;
+    cc::FAR_DEFINE.otphy.p = p;
+    cc::FAR_DEFINE.phy.rho = p/cc::R/T;
+    cc::FAR_DEFINE.otphy.form_otphy(cc::FAR_DEFINE.phy);
+    cc::FAR_DEFINE.Ma = u_inf/cc::FAR_DEFINE.otphy.a;
     urans::dt = u_dt;
     urans::inner = u_inner;
     urans::inner_tol = u_tol;
@@ -352,3 +357,13 @@ inline bool config::load(const char* path) {
     urans::seed = u_seed;
     return true;
 }
+
+inline void write_wall_cp(FILE* fp, int step, double t, cc::vecp refp, double refpressure) {
+    const double q = dynamic_pressure(refp);
+    fprintf(fp, "# step %d t %.8e\n", step, t);
+    for (const cc::face_class* w : cc::WallFaces) {
+        fprintf(fp, "%.6e %.6e %.6e\n", w->mid.x, w->mid.y, (w->otphy.p -refpressure) / q);
+    }
+    fflush(fp);
+}
+

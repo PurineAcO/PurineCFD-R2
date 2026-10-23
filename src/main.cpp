@@ -2,11 +2,12 @@
 #include "classconfig.hpp"
 #include "config.hpp"
 #include "dualtime.hpp"
-#include "dualtime_full.hpp"
 #include "geometry.hpp"
+#include "implict.hpp"
 #include "initialize.hpp"
 #include "io.hpp"
 #include "readmesh.hpp"
+#include "udf.hpp"
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -14,46 +15,8 @@
 #include <cstdlib>
 #include <string>
 
-// 收到 SIGINT/SIGTERM 只置位, 由主循环在物理步之间响应: 写完当前步流场再退出
 static volatile std::sig_atomic_t stop_requested = 0;
 static void handle_stop(int) { stop_requested = 1; }
-
-#ifdef PURINE_JAC_FULL
-inline double flow_step_select(double dt,double cfl){ return dual_full::flow_step(dt,cfl); }
-#else
-inline double flow_step_select(double dt,double cfl){ return dual::flow_step(dt,cfl); }
-#endif
-
-// 来流动压
-static double dynamic_pressure() {
-    const double rho_inf = FAR_DEFINE.p / (cc::R * FAR_DEFINE.T);
-    return 0.5 * rho_inf * (FAR_DEFINE.u * FAR_DEFINE.u + FAR_DEFINE.v * FAR_DEFINE.v);
-}
-
-// 壁面合力(压力+摩擦)的升阻力系数, 参考长度取1(圆柱直径/翼型弦长)
-static void wall_forces(double& cl, double& cd) {
-    const double q = dynamic_pressure();
-    double fx = 0.0, fy = 0.0;
-    for (cc::face_class* w : cc::WallFaces) {
-        const cc::cell_class* c = cc::boundary_findcell(w);
-        // s*nor 由流体指向物面
-        const double s = cc::dot(w->nor, w->mid - c->center) > 0 ? 1.0 : -1.0;
-        fx += s * (w->otphy.p * w->nor.x - w->visflux.x);
-        fy += s * (w->otphy.p * w->nor.y - w->visflux.y);
-    }
-    const double a = std::atan2(FAR_DEFINE.v, FAR_DEFINE.u);
-    cl = (-fx * std::sin(a) + fy * std::cos(a)) / q;
-    cd = (fx * std::cos(a) + fy * std::sin(a)) / q;
-}
-
-static void write_wall_cp(FILE* fp, int step, double t) {
-    const double q = dynamic_pressure();
-    fprintf(fp, "# step %d t %.8e\n", step, t);
-    for (const cc::face_class* w : cc::WallFaces) {
-        fprintf(fp, "%.6e %.6e %.6e\n", w->mid.x, w->mid.y, (w->otphy.p - FAR_DEFINE.p) / q);
-    }
-    fflush(fp);
-}
 
 static std::vector<cc::vec4> snap_q;
 static std::vector<double> snap_nu;
@@ -79,39 +42,9 @@ static void restore_state() {
     }
 }
 
-static int bad_cells() {
-    int nbad = 0;
-    for (const cc::cell_class& c : cc::CellList) {
-        const double ke =
-            0.5 * (c.conser.x * c.conser.x + c.conser.y * c.conser.y) / c.conser.c;
-        const double T = (c.conser.e - ke) / (c.conser.c * cc::Cv);
-        const bool bad = !std::isfinite(c.conser.c) || c.conser.c <= 0.0 ||
-                         !std::isfinite(c.conser.e) || !std::isfinite(c.tur.miubl) ||
-                         !(T > 0.0) || !std::isfinite(T);
-        if (bad) {
-            if (nbad < 100)
-                printf("  bad cell #%d (%.6g, %.6g)\n", c.index, c.center.x, c.center.y);
-            ++nbad;
-        }
-    }
-    if (nbad > 100) printf("  ... 共 %d 个坏单元\n", nbad);
-    return nbad;
-}
-
-// 初场叠加绕原点的高斯涡, 打破对称性使圆柱尽快起振
-static void add_seed(double amp) {
-    for (cc::cell_class& c : cc::CellList) {
-        const double r = std::hypot(c.center.x, c.center.y);
-        if (r < 0.5 || r > 3.0) continue;
-        const double w = amp * std::exp(-r * r / 4.0);
-        c.phy.u -= w * c.center.y;
-        c.phy.v += w * c.center.x;
-        c.form_otherphy();
-        c.form_conservative();
-    }
-}
-
 int main(int argc, char** argv) {
+
+    // Prepare Period
     const char* cfg = argc > 1 ? argv[1] : "config.json";
     if (!config::load(cfg)) return 1;
     std::signal(SIGINT, handle_stop);
@@ -120,10 +53,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Error: solver.urans is required\n");
         return 1;
     }
-    if (!make_dirs(cc::fieldpath)) {
-        fprintf(stderr, "Error: cannot create field directory: %s\n", cc::fieldpath.c_str());
-        return 1;
-    }
+    if (!make_dirs(cc::fieldpath)) return 1;
     if (!open_log(cc::testpath.c_str())) return 1;
 #ifdef _OPENMP
     // OMP_NUM_THREADS 优先, 其次 solver.threads
@@ -131,10 +61,12 @@ int main(int argc, char** argv) {
     if ((!env_threads || !*env_threads) && cc::threads > 0) omp_set_num_threads(cc::threads);
     printf("OpenMP threads: %d\n", omp_get_max_threads());
 #endif
+
+
+    // Pre-Process
     if (!readmesh(cc::meshpath.c_str()) || !geometrymain()) return 1;
     std_initialize();
     allcell icell(i).form_conservative();
-    // LSCB预处理必须在HALO之前: 虚网格没有几何
     allcell least_square_cell_based_preprocess(icell(i));
     HALO_structer_mesh();
     int restart_step = 0;
@@ -145,9 +77,8 @@ int main(int argc, char** argv) {
         if (urans::steady_iters > 0) {
             printf("注意: steady_iters=%d, 读入的流场会先被定常迭代改掉\n", urans::steady_iters);
         }
-    } else if (urans::seed > 0.0) {
-        add_seed(urans::seed * std::hypot(FAR_DEFINE.u, FAR_DEFINE.v));
     }
+    if(urans::seed > 0.0) add_seed(urans::seed*std::hypot(cc::FAR_DEFINE.phy.u, cc::FAR_DEFINE.phy.v));
 
     FILE* hist = fopen((cc::fieldpath + "/history.csv").c_str(), "w");
     FILE* wall =
@@ -163,7 +94,7 @@ int main(int argc, char** argv) {
     };
     double cl = 0.0, cd = 0.0;
 
-    // 收尾: 需要时先写下当前流场再关文件, save_step < 0 表示不用写
+    // 保存流场
     auto finish = [&](int code, const char* why, int save_step) {
         if (save_step >= 0) {
             allcell icell(i).prim();
@@ -176,13 +107,13 @@ int main(int argc, char** argv) {
         return code;
     };
 
-    // 定常隐式迭代给URANS初场, CFL在前200步从2线性增大到steady_cfl
+    // RANS
     for (int it = 1; it <= urans::steady_iters;) {
         if (stop_requested) { return finish(0, "用户中断定常迭代", it - 1); }
         const double cfl =
             std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0) * cfl_scale;
         save_state();
-        const double r = flow_step_select(0.0, cfl);
+        const double r = impl::flow_step(0.0, cfl);
         dual::sa_step(0.0, cfl);
         const int nb = bad_cells();
         if (nb > 0) {
@@ -199,9 +130,9 @@ int main(int argc, char** argv) {
         }
         if (cfl_scale < 1.0) cfl_scale = std::min(1.0, cfl_scale * 1.05);
         if (it % config::conv_step == 0 || it == urans::steady_iters) {
-            wall_forces(cl, cd);
+            wall_forces(cl,cd,cc::FAR_DEFINE.phy);
             printf("steady %6d  cfl %6.1f  res %.4e  Cl %.5f  Cd %.5f  clip %5d  [%.0fs]\n", it, cfl,
-                   r, cl, cd, dual_full::n_clip, elapsed());
+                   r, cl, cd, impl::n_clip, elapsed());
             fprintf(hist, "S,%d,0,1,%.6e,%.6e,%.8f,%.8f\n", it, r, r, cl, cd);
             fflush(stdout);
         }
@@ -212,7 +143,7 @@ int main(int argc, char** argv) {
         if (!dump_field(restart_step)) return 1;
     }
 
-    // URANS: 每个物理步内做最多inner次隐式伪时间迭代
+    // URANS
     const int step_0 = restart_step; // 续算时接着文件里的步号往下数
     const int last_step = cc::end_step > 0 ? (int)cc::end_step : step_0 + (int)cc::max_step;
     if (last_step <= step_0) {
@@ -239,7 +170,7 @@ int main(int argc, char** argv) {
             r = 0.0;
             k = 0;
             while (k < urans::inner) {
-                r = flow_step_select(urans::dt, fatime::CFL);
+                r = impl::flow_step(urans::dt, fatime::CFL);
                 dual::sa_step(urans::dt, fatime::CFL);
                 if (++k == 1)
                     r0 = r;
@@ -261,16 +192,16 @@ int main(int argc, char** argv) {
         fatime::CFL = cfl_nom;
         if (cfl_scale < 1.0) cfl_scale = std::min(1.0, cfl_scale * 1.05);
         t += urans::dt;
-        wall_forces(cl, cd);
+        wall_forces(cl, cd,cc::FAR_DEFINE.phy);
         fprintf(hist, "U,%d,%.8e,%d,%.6e,%.6e,%.8f,%.8f\n", n, t, k, r0, r, cl, cd);
         fflush(hist);
         if (n % config::conv_step == 0 || n == step_0 + 1) {
             printf("step %6d  t %.5e  inner %2d  res %.3e -> %.3e  Cl %.5f  Cd %.5f  "
                    "clip %5d  [%.0fs]\n",
-                   n, t, k, r0, r, cl, cd, dual_full::n_clip, elapsed());
+                   n, t, k, r0, r, cl, cd, impl::n_clip, elapsed());
             fflush(stdout);
         }
-        if (wall && n % urans::wall_interval == 0) write_wall_cp(wall, n, t);
+        if (wall && n % urans::wall_interval == 0) write_wall_cp(wall, n, t,cc::FAR_DEFINE.phy,cc::FAR_DEFINE.otphy.p);
         if (stop_requested) { return finish(0, "用户中断", n); }
         if (n % config::dump_step == 0) {
             allcell icell(i).prim();
