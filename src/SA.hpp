@@ -6,7 +6,8 @@
 #include <cmath>
 
 /*
-根据Fluent的求解手段,miubl将会在一个RK内迭代步以后再进行更新,而不是跟随RK
+根据Fluent的求解手段,miubl将会在一个内迭代步以后再进行更新,而不是跟随无粘通量进行计算
+不论是显式还是隐式,都遵循上述规律.为此,本文件中不仅定义了SA本体的计算还定义了Jacobi的计算
 */
 
 namespace SA {
@@ -60,8 +61,6 @@ namespace sutherland {
 double _MUT(double mu,double T);
 
 } // namespace sutherland
-
-
 
 inline double SA::_chi(double rho, double mu, double miubl) {
     return rho * (miubl > 0.0 ? miubl : 0.0) / mu;

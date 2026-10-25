@@ -25,7 +25,6 @@ inline int n_clip = 0;
 inline std::vector<cc::vec4> dQ;   // 守恒量变化量
 inline std::vector<cc::vec4> dQold;// 冻结守恒量变化量
 inline std::vector<cc::vec4> rhs;  // 右侧残差
-inline std::vector<double> lam;    // 面上谱半径
 
 // 形成右侧残差
 void right_residual();
@@ -50,7 +49,7 @@ void Qcopy();
 // 求解核心
 void solvekernel(int c,int lo,int hi);
 // 循环器GS
-void block_sgs();
+template <class KERNEL> void block_sgs(KERNEL&& solve_kernel);
 // 松弛
 int relax();
 // 进行一次双隐式伪时间迭代
@@ -85,7 +84,6 @@ inline void impl::malloc_vector(){
     dQ.resize(cc::cell_num);
     dQold.resize(cc::cell_num);
     rhs.resize(cc::cell_num);
-    lam.resize(cc::cell_num);
 }
 
 static double normal_dist(cc::face_class* face){
@@ -96,6 +94,7 @@ static double normal_dist(cc::face_class* face){
 inline void impl::clear_mat(){
 #pragma omp parallel for schedule(static)
     allcell icell(i).diag.clear();
+#pragma omp parallel for schedule(static)
     allcell icell(i).lambda = 0.0;
 }
 
@@ -151,7 +150,6 @@ inline void impl::form_diag(cc::cell_class &cell,double inv_dt,double cfl){
         else if(f->type == cc::FAR){ far_jacobi(f,&cell, s); far += far_convect_jacobi(f); }
     }
     cell.diag += far;
-    lam[cell.index-1] = cell.lambda;
 }
 
 inline void impl::Qcopy(){
@@ -174,7 +172,7 @@ inline void impl::solvekernel(int c, int lo, int hi){
     dQ[c] = cell.diag.solve4(-1*acc);
 }
 
-inline void impl::block_sgs(){
+template <class KERNEL> inline void impl::block_sgs(KERNEL&& solve_kernel){
 #pragma omp parallel
     {
 #ifdef _OPENMP
@@ -184,13 +182,13 @@ inline void impl::block_sgs(){
 #endif
         const int lo = (int) ((long long) cc::cell_num* tid / nt);
         const int hi = (int) ((long long) cc::cell_num* (tid+1) / nt);
-        for(int c = lo; c < hi; c++) solvekernel(c, lo, hi);
-        for(int c = hi - 1; c >= lo; c--) solvekernel(c, lo, hi); 
+        for(int c = lo; c < hi; c++) solve_kernel(c, lo, hi);
+        for(int c = hi - 1; c >= lo; c--) solve_kernel(c, lo, hi); 
     }
 
 }
 
-static bool ifneedralax(cc::vec4 newed,cc::vec4 old){
+static bool ifnotneedralax(cc::vec4 newed,cc::vec4 old){
     double oldein = old.e - 0.5*(old.x*old.x+old.y*old.y)/old.c;
     return (newed.c>0.5*old.c && newed.e-0.5*(newed.x*newed.x+newed.y*newed.y)/newed.c>0.5*oldein);
 }
@@ -201,7 +199,7 @@ inline int impl::relax(){
     allcell{
         double relaxer = 1.0;
         for(int it=0;it<6;it++){
-            if(ifneedralax(icell(i).conser+relaxer*dQ[i], icell(i).conser)) break;
+            if(ifnotneedralax(icell(i).conser+relaxer*dQ[i], icell(i).conser)) break;
             if(it>0 && clip != 1) clip++;
             relaxer *= 0.5;
         }
@@ -226,7 +224,7 @@ inline double impl::flow_step(double dt,double cfl){
     allcell {rhs[i] = icell(i).convect - icell(i).visflux + (icell(i).vol*inv_dt)*(icell(i).conser-icell(i).lastconser);
              dQ[i].clear();res += rhs[i].c * rhs[i].c; };
     // 并行编译标记写在里面了        
-    for(int sw=0;sw<urans::sweeps;sw++){Qcopy();block_sgs();}
+    for(int sw=0;sw<urans::sweeps;sw++){Qcopy();block_sgs(solvekernel);}
     n_clip = relax();
     return sqrt(res/cc::cell_num);
 }
