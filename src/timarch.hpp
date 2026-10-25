@@ -15,6 +15,10 @@
 
 #define forrk(rktable) for (int z = 0; z < (int)std::size(rktable); z++)
 
+/*
+timarch.hpp 记录了显式RK的格式,目前RK处于废弃状态.
+*/
+
 // Runge-Kutta显式时间推进
 namespace RK {
 inline constexpr double RK5[5] = {0.25, 1.0 / 6, 0.375, 0.5, 1.0};

@@ -2,7 +2,9 @@
 
 #include "classconfig.hpp"
 #include "config.hpp"
+#include "dualtime.hpp"
 #include "physic.hpp"
+#include <algorithm>
 #include <cmath>
 
 /*
@@ -26,106 +28,105 @@ inline constexpr double relax = 0.8;
 inline constexpr double Prt = 0.9;
 inline constexpr double C5 = 3.5;
 
+// 隐式部分向量
+inline std::vector<double> dnu;    // miubl变化量
+inline std::vector<double> dnuold; // 上一步miubl变化量
+inline std::vector<double> nurhs;  // miubl残差
+
 // 形成粘性通量
 void diffusion_SA(cc::face_class& face);
 // 组装粘性通量
 void assemble_visflux(cc::cell_class& cell);
+// 形成湍流中间变量
+void build_SA(cc::cell_class& c);
+void build_SA(cc::face_class& f);
 // 形成源项
-double source_SA(const cc::cell_class& cell);
-// RK子步内求解湍流方程(非守恒形式)
+double source_SA(cc::cell_class& cell);
+// RK子步内求解湍流方程(非守恒形式),目前被弃用
 void SA_equation_after(cc::cell_class& cell, double dtau, double dt, bool urans);
-// 湍流粘度比
-double _chi(double rho, double mu, double miubl);
-// 粘度阻尼函数
-double _fv1(double chi);
-// 转捩控制函数
-double _ft2(double chi);
-// 涡量辅助函数
-double _fv2(double chi);
-// 无量纲距离II
-double _g(double r);
-// 破坏项控制函数
-double _fw(double g);
 // 粘性通量Jacobi矩阵前体B,冻结梯度
 std::pair<cc::mat5, cc::mat5> form_pfpgq_diffusion(const cc::face_class& face);
 // 将粘性通量Jacobi矩阵前体B转换成B
 cc::mat5 form_pfpw_from_pfpgq(const cc::mat5& J,const cc::face_class& face);
 // 粘性通量Jacobi矩阵T,冻结非梯度量
 cc::mat5 diffusion_grad_jac(const cc::face_class& face,double dn);
+// 面上有效扩散系数
+double Gamma_eff(cc::cell_class& c,cc::face_class *f);
+// 源项Jacobi
+void source_jacobi_diag_SA(cc::cell_class& cell,double inv_dt,double cfl);
+// 清空向量
+void source_vector_clear();
+// 分配向量内存
+void malloc_vector();
+// 形成SA输运方程右侧残差
+double right_residual(cc::cell_class& cell);
+// SA隐式求解核心
+void solvekernel(int c,int lo,int hi);
+// 复制SA求解向量
+void nucopy();
+// 松弛SA求解器
+void relaxer();
 
 } // namespace SA
 
-namespace sutherland {
-
-// sutherland粘度对温度的导数
-double _MUT(double mu,double T);
-
-} // namespace sutherland
-
-inline double SA::_chi(double rho, double mu, double miubl) {
-    return rho * (miubl > 0.0 ? miubl : 0.0) / mu;
+inline void SA::build_SA(cc::cell_class &c){
+    c.otphy.mu = sutherland::dynamic_viscosity(c.phy.T);
+    c.tur.chi =  c.phy.rho * (c.tur.miubl > 0.0 ? c.tur.miubl : 0.0) / c.otphy.mu;
+    c.tur.fv1 = (c.tur.chi*c.tur.chi*c.tur.chi) /(c.tur.chi*c.tur.chi*c.tur.chi + Cv1 * Cv1 * Cv1);
+    c.tur.ft2 = Ct3 * std::exp(-SA::Ct4 * c.tur.chi * c.tur.chi);
+    c.tur.fv2 =  1 - c.tur.chi / (1 + c.tur.chi * c.tur.fv1);
+    c.tur.Omega = std::abs(c.phgrad.vgrad.x - c.phgrad.ugrad.y);
+    c.tur.Sbl = std::max(c.tur.Omega + c.tur.fv2 * c.tur.miubl * (1.0 / (c.tur.sad * c.tur.sad)) / (kappa * kappa)
+                , std::max(0.3 * c.tur.Omega, 1e-20));
+    c.tur.r = std::min(c.tur.miubl * (1.0 / (c.tur.sad * c.tur.sad)) / (kappa * kappa) / c.tur.Sbl, SA::rmax);
+    c.tur.g = c.tur.r + SA::Cw2 * (c.tur.r * c.tur.r * c.tur.r * c.tur.r * c.tur.r * c.tur.r - c.tur.r);
+    c.tur.fw = c.tur.g * std::pow((1 + pow(Cw3,6)) / (pow(Cw3,6) + pow(c.tur.g, 6)), 1.0 / 6);
+    c.tur.S2 = 2 * c.phgrad.ugrad.x * c.phgrad.ugrad.x + 2 * c.phgrad.vgrad.y * c.phgrad.vgrad.y +
+        (c.phgrad.ugrad.y + c.phgrad.vgrad.x) * (c.phgrad.ugrad.y + c.phgrad.vgrad.x);
 }
 
-inline double SA::_fv1(double chi) {
-    return (chi * chi * chi) / (chi * chi * chi + SA::Cv1 * SA::Cv1 * SA::Cv1);
+inline void SA::build_SA(cc::face_class& f){
+    f.otphy.mu = sutherland::dynamic_viscosity(f.phy.T);
+    f.tur.chi =  f.phy.rho * (f.tur.miubl > 0.0 ? f.tur.miubl : 0.0) / f.otphy.mu;
+    f.tur.fv1 = (f.tur.chi*f.tur.chi*f.tur.chi) /(f.tur.chi*f.tur.chi*f.tur.chi + Cv1 * Cv1 * Cv1);
 }
 
-inline double SA::_ft2(double chi) {
-    return SA::Ct3 * std::exp(-SA::Ct4 * chi * chi);
+inline void SA::diffusion_SA(cc::face_class& face) {
+    build_SA(face);
+    // Reynold 应力
+    const double mueff = face.phy.rho*face.tur.fv1*face.tur.miubl + face.otphy.mu;
+    face.tur.mueff = mueff;
+    const double tauxx = mueff * (4.0 / 3 * face.phgrad.ugrad.x - 2.0 / 3 * face.phgrad.vgrad.y);
+    const double tauxy = mueff * (face.phgrad.ugrad.y + face.phgrad.vgrad.x);
+    const double tauyy = mueff * (4.0 / 3 * face.phgrad.vgrad.y - 2.0 / 3 * face.phgrad.ugrad.x);
+    // 热流
+    const double lambdaeff = face.otphy.mu / cc::Pr + face.phy.rho*face.tur.fv1*face.tur.miubl / Prt;
+    const cc::vec2 q = -lambdaeff * cc::Cp * face.phgrad.Tgrad;
+    // 粘性通量
+    const cc::vec4 visF(0, tauxx, tauxy, face.phy.u * tauxx + face.phy.v * tauxy - q.x);
+    const cc::vec4 visG(0, tauxy, tauyy, face.phy.u * tauxy + face.phy.v * tauyy - q.y);
+    face.visflux.clear();
+    face.visflux = face.toface_jacobi(visF, visG);
 }
 
-inline double SA::_fv2(double chi) {
-    return 1 - chi / (1 + chi * SA::_fv1(chi));
-}
-
-inline double SA::_g(double r) {
-    return r + SA::Cw2 * (r * r * r * r * r * r - r);
-}
-
-inline double SA::_fw(double g) {
-    constexpr double cw3_squared = SA::Cw3 * SA::Cw3;
-    constexpr double cw3_sixth = cw3_squared * cw3_squared * cw3_squared;
-    const double g_squared = g * g;
-    const double g_sixth = g_squared * g_squared * g_squared;
-    return g * std::pow((1 + cw3_sixth) / (cw3_sixth + g_sixth), 1.0 / 6);
-}
-
-inline double SA::source_SA(const cc::cell_class& cell) {
-    double mu = cell.otphy.mu;
-    double chi = _chi(cell.phy.rho, mu, cell.tur.miubl);
-    double ft2 = _ft2(chi);
-    double fv2 = _fv2(chi);
-    double vorticity = std::abs(cell.phgrad.vgrad.x - cell.phgrad.ugrad.y);
-    const double scaled_nu =
-        cell.tur.miubl * (1.0 / (cell.tur.sad * cell.tur.sad)) / (SA::kappa * SA::kappa);
-    double modified_vorticity =
-        std::max(vorticity + fv2 * scaled_nu, std::max(0.3 * vorticity, 1e-20));
-    double production = SA::Cb1 * (1 - ft2) * modified_vorticity * cell.phy.rho * cell.tur.miubl;
-    double r = std::min(scaled_nu / modified_vorticity, SA::rmax);
-    double g = _g(r);
-    double destruction = cell.phy.rho * (SA::Cw1 * _fw(g) - SA::Cb1 / SA::kappa / SA::kappa * ft2) *
+inline double SA::source_SA(cc::cell_class& cell) {
+    build_SA(cell);
+    double production = Cb1 * (1 - cell.tur.ft2) * cell.tur.Sbl * cell.phy.rho * cell.tur.miubl;
+    double destruction = cell.phy.rho * (Cw1 * cell.tur.fw - Cb1 / kappa / kappa * cell.tur.ft2) *
                          cell.tur.miubl * cell.tur.miubl * (1.0 / (cell.tur.sad * cell.tur.sad));
-    double gradient_source =
-        SA::Cb2 * SA::inv_sigma * cell.phy.rho * cc::dot(cell.tur.miublgrad, cell.tur.miublgrad);
+    double gradient_source = Cb2 * inv_sigma * cell.phy.rho * cc::dot(cell.tur.miublgrad, cell.tur.miublgrad);
     // 部分论文中引入了可压缩性修正
-    double S2 =
-        2 * cell.phgrad.ugrad.x * cell.phgrad.ugrad.x +
-        2 * cell.phgrad.vgrad.y * cell.phgrad.vgrad.y +
-        (cell.phgrad.ugrad.y + cell.phgrad.vgrad.x) * (cell.phgrad.ugrad.y + cell.phgrad.vgrad.x);
-    double compressible = SA::C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * S2 /
+    double compressible = C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * cell.tur.S2 /
                           (cc::gamma * cc::R * cell.phy.T);
     return production - destruction + gradient_source - compressible;
 }
 
-inline double sutherland::_MUT(double mu,double T){
-    return mu*(T+3*sutherland::Ts)/(2*T*(T+sutherland::Ts));
-}
 
 inline std::pair<cc::mat5, cc::mat5> SA::form_pfpgq_diffusion(const cc::face_class& face){
     const cc::vecgrad& g = face.phgrad;
     const cc::vec2& bg = face.tur.miublgrad;
     const double rho = face.phy.rho, u = face.phy.u, v = face.phy.v;
-    const double fv1 = SA::_fv1(SA::_chi(rho, face.otphy.mu, face.tur.miubl));
+    const double fv1 = face.tur.fv1;
     const double D = fv1 + 3*fv1*(1-fv1);
     const double A2 = g.ugrad.x*4/3 - g.vgrad.y*2/3;
     const double A3 = g.ugrad.y + g.vgrad.x;
@@ -193,25 +194,7 @@ inline cc::mat5 SA::diffusion_grad_jac(const cc::face_class& face,double dn){
     return cc::mat5_of(a);
 }
 
-inline void SA::diffusion_SA(cc::face_class& face) {
-    const double mu = face.otphy.mu;
-    const double chi = _chi(face.phy.rho, mu, face.tur.miubl);
-    const double mut = face.phy.rho * _fv1(chi) * face.tur.miubl;
-    // Reynold 应力
-    const double mueff = mut + mu;
-    face.tur.mueff = mueff;
-    const double tauxx = mueff * (4.0 / 3 * face.phgrad.ugrad.x - 2.0 / 3 * face.phgrad.vgrad.y);
-    const double tauxy = mueff * (face.phgrad.ugrad.y + face.phgrad.vgrad.x);
-    const double tauyy = mueff * (4.0 / 3 * face.phgrad.vgrad.y - 2.0 / 3 * face.phgrad.ugrad.x);
-    // 热流
-    const double lambdaeff = mu / cc::Pr + mut / Prt;
-    const cc::vec2 q = -lambdaeff * cc::Cp * face.phgrad.Tgrad;
-    // 粘性通量
-    const cc::vec4 visF(0, tauxx, tauxy, face.phy.u * tauxx + face.phy.v * tauxy - q.x);
-    const cc::vec4 visG(0, tauxy, tauyy, face.phy.u * tauxy + face.phy.v * tauyy - q.y);
-    face.visflux.clear();
-    face.visflux = face.toface_jacobi(visF, visG);
-}
+
 
 inline void SA::SA_equation_after(cc::cell_class& cell, double dtau, double dt, bool urans) {
     double convect = 0.0;
@@ -244,4 +227,89 @@ inline void SA::SA_equation_after(cc::cell_class& cell, double dtau, double dt, 
 inline void SA::assemble_visflux(cc::cell_class& cell) {
     cell.visflux.clear();
     allface(cell) cell.visflux += cell.faces[i]->visflux * (2 * cell.fnorm[i] - 1);
+}
+
+inline double SA::Gamma_eff(cc::cell_class& c, cc::face_class *f){
+    if(f->type == cc::WALL) return inv_sigma * f->otphy.mu;
+    else if(f->type == cc::FAR){return inv_sigma*(f->otphy.mu + f->phy.rho *f->tur.miubl);}
+    else if(f->type == cc::INTER){
+        return (1+Cb2)*inv_sigma * (f->otphy.mu + f->phy.rho * f->tur.miubl) - 
+            Cb2*inv_sigma * (c.otphy.mu + c.phy.rho*c.tur.miubl);}
+    else return 0.0;
+}
+
+// inline void SA::source_vector_clear(){
+// #pragma omp parallel for schedule(static)
+//     for(int i=0;i<(int) dnu.size();i++) dnu[i]=0.0;
+// }
+
+inline void SA::source_jacobi_diag_SA(cc::cell_class &cell,double inv_dt,double cfl){
+    cell.tur.diag = cell.vol * cell.phy.rho * inv_dt;
+    cell.tur.diag += cell.phy.rho * cell.lambda / cfl;
+    allface(cell){
+        cc::face_class* f = cell.faces[i];
+        double s = 2*cell.fnorm[i] - 1;
+        cell.tur.diag += std::max(f->phy.rho*s*f->toface_jacobi(f->phy.u,f->phy.v),0.0);
+        cell.tur.diag += Gamma_eff(cell,f) * f->len / normal_dist(f);
+    }
+    double chidft2 = -2*Ct4 *cell.tur.chi*cell.tur.chi *cell.tur.ft2;
+    double chidfv2 = -cell.tur.chi * (1-3*cell.tur.chi*cell.tur.fv1*(1-cell.tur.fv1))/pow(1+cell.tur.chi*cell.tur.fv1,2);
+    double cw3_6 = pow(Cw3,6);
+    double g6 = pow(cell.tur.g,6);
+    double h = pow((1+cw3_6)/(cw3_6+g6),1.0/6);
+    double rdfw = cell.tur.r * h * cw3_6/(cw3_6+g6) *
+                   (1 + Cw2*(6*pow(cell.tur.r,5) - 1));
+    double rhoS = cell.phy.rho * cell.tur.Sbl;
+    cell.tur.diag -= cell.vol * ( rhoS * Cb1 * (1-cell.tur.ft2-chidft2)
+                    + rhoS * Cb1 * cell.tur.r * ((cell.tur.fv2+chidfv2)*(1-cell.tur.ft2) +2*cell.tur.ft2 + chidft2 )
+                    - rhoS * Cw1 * kappa*kappa*cell.tur.r *(2*cell.tur.fw+rdfw-cell.tur.r*rdfw*(cell.tur.fv2+chidfv2)) );
+    cell.tur.diag += cell.vol * 2*C5*cell.phy.rho*cell.tur.miubl*cell.tur.S2/(cc::gamma*cc::R*cell.phy.T);
+}
+
+inline void SA::malloc_vector(){
+    if((int) dnu.size() == cc::cell_num)return;
+    dnu.resize(cc::cell_num);dnuold.resize(cc::cell_num);nurhs.resize(cc::cell_num);
+}
+
+
+inline double SA::right_residual(cc::cell_class& cell){
+    double res = 0.0;
+    allface(cell){
+        cc::face_class* f = cell.faces[i];
+        const cc::cell_class* nb = cc::other_cell(f,&cell);
+        const double nu_o = nb ? nb->tur.miubl : f->tur.miubl;
+        double s = 2*cell.fnorm[i]-1;
+        res += s*f->phy.rho*f->toface_jacobi(f->phy.u,f->phy.v)*f->tur.miubl;
+        res += Gamma_eff(cell, f)*f->len/normal_dist(f)*(cell.tur.miubl - nu_o);
+    }
+    res -= cell.vol * source_SA(cell);
+    return res;
+}
+
+inline void SA::solvekernel(int c, int lo, int hi){
+    cc::cell_class& cell = icell(c);
+    double acc = nurhs[c];
+    allface(cell){
+        cc::face_class* f = cell.faces[i];
+        if(f->type != cc::INTER) continue;
+        double s = 2*cell.fnorm[i]-1;
+        cc::cell_class* nb = cc::other_cell(f, &cell);
+        double dj = (nb->index-1>=lo && nb->index-1<hi) ? dnu[nb->index-1] : dnuold[nb->index-1];
+        acc += (std::min(s*f->phy.rho*f->otphy.un*f->len,0.0) - Gamma_eff(cell, f)*f->len/normal_dist(f))*dj;
+    }
+    dnu[c] = -acc/cell.tur.diag;
+}
+
+inline void SA::nucopy(){
+#pragma omp parallel for schedule(static)
+    for(int i=0;i<(int) dnu.size();i++) dnuold[i] = dnu[i];
+}
+
+inline void SA::relaxer(){
+#pragma omp parallel for schedule(static)
+    allcell{
+        double delta_nu = dnu[i];
+        if(!std::isfinite(dnu[i])) {delta_nu = 0.0;}
+        icell(i).tur.miubl = std::max(0.0,icell(i).tur.miubl + delta_nu);
+    }
 }

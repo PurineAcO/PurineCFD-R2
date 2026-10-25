@@ -54,6 +54,8 @@ template <class KERNEL> void block_sgs(KERNEL&& solve_kernel);
 int relax();
 // 进行一次双隐式伪时间迭代
 double flow_step(double dt, double cfl);
+// 进行一次湍流模型伪时间迭代
+void turbulence_step(double dt, double cfl);
 
 }// namespace impl
 
@@ -86,16 +88,12 @@ inline void impl::malloc_vector(){
     rhs.resize(cc::cell_num);
 }
 
-static double normal_dist(cc::face_class* face){
-    if(face->type != cc::INTER) return -1;
-    return std::abs(cc::dot(face->nei[0]->center - face->nei[1]->center, face->nor))/face->len;
-}
-
 inline void impl::clear_mat(){
 #pragma omp parallel for schedule(static)
     allcell icell(i).diag.clear();
 #pragma omp parallel for schedule(static)
     allcell icell(i).lambda = 0.0;
+    // SA::source_jacobi_clear();
 }
 
 inline void impl::form_euler_jacobi(cc::cell_class& cell){
@@ -227,4 +225,18 @@ inline double impl::flow_step(double dt,double cfl){
     for(int sw=0;sw<urans::sweeps;sw++){Qcopy();block_sgs(solvekernel);}
     n_clip = relax();
     return sqrt(res/cc::cell_num);
+}
+
+inline void impl::turbulence_step(double dt, double cfl){
+    SA::malloc_vector();
+    const double inv_dt = dt > 0.0 ? 1.0 / dt : 0.0;
+#pragma omp parallel for schedule(static)
+    allcell SA::nurhs[i] = SA::right_residual(icell(i)) + icell(i).vol * inv_dt *
+                           (icell(i).conser.c*icell(i).tur.miubl - icell(i).lastconser.c*icell(i).tur.miubl_former);
+#pragma omp parallel for schedule(static)
+    allcell SA::source_jacobi_diag_SA(icell(i), inv_dt, cfl);
+#pragma omp parallel for schedule(static)
+    allcell SA::dnu[i] = 0.0;
+    for(int sw=0;sw<urans::sweeps;sw++){SA::nucopy();block_sgs(SA::solvekernel);}
+    SA::relaxer();
 }

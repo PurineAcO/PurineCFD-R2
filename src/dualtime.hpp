@@ -86,7 +86,7 @@ inline void sa_step(double dt, double cfl) {
 // 守恒形式 ∂(ρν̃)/∂t + Σ(ṁν̃) - Σ(coef ∂ν̃/∂n S) - V*S_SA = 0, 未知量为ν̃
 #pragma omp parallel for schedule(static)
     for (int c = 0; c < N; c++) {
-        const cc::cell_class& cell = icell(c);
+        cc::cell_class& cell = icell(c);
         const double nu = cell.tur.miubl;
         double res = 0.0, dg = 0.0;
         allface(cell) {

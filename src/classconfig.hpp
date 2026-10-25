@@ -322,3 +322,12 @@ struct far_condition {
 inline far_condition FAR_DEFINE;
 
 }
+
+inline double normal_dist(cc::face_class* face){
+    if(face->type == cc::WALL) {return cc::boundary_findcell(face)->tur.sad;}
+    else if(face->type == cc::FAR) {
+        return std::abs(cc::dot(face->mid-cc::boundary_findcell(face)->center,face->nor)/face->len);}
+    else if(face->type == cc::INTER) {
+        return std::abs(cc::dot(face->nei[0]->center - face->nei[1]->center, face->nor))/face->len;}
+    else return 0.0;
+}

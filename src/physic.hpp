@@ -22,7 +22,13 @@ inline constexpr double T0 = 273.15;
 inline constexpr double mu0 = 1.716e-5;
 // Sutherland粘度
 double dynamic_viscosity(double T);
+// sutherland粘度对温度的导数
+double _MUT(double mu,double T);
 } // namespace sutherland
+
+inline double sutherland::_MUT(double mu,double T){
+    return mu*(T+3*sutherland::Ts)/(2*T*(T+sutherland::Ts));
+}
 
 inline double get_sonic_velocity(double T) {
     return sqrt(cc::gamma * cc::R * T);
@@ -32,11 +38,9 @@ inline double get_energy(cc::vecp phy) {
     return cc::Cv * phy.T + 0.5 * (phy.u * phy.u + phy.v * phy.v);
 }
 
-namespace sutherland {
-inline double dynamic_viscosity(double T) {
+inline double sutherland::dynamic_viscosity(double T) {
     return mu0 * (T / T0) * std::sqrt(T / T0) * (T0 + Ts) / (T + Ts);
 }
-} // namespace sutherland
 
 // 计算附加物理量e,a,p,mu
 inline void cc::otphy::form_otphy(cc::vecp phy) {
