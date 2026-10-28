@@ -10,7 +10,8 @@ void std_initialize();
 
 inline void std_initialize() {
     // double rho_inf = cc::FAR_DEFINE.phy.rho;
-    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) / cc::FAR_DEFINE.phy.rho;
+    double miubl_inf = config::miubl_inf_ratio * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) /
+                       cc::FAR_DEFINE.phy.rho;
     allcell {
         icell(i).phy = cc::FAR_DEFINE.phy;
         icell(i).form_otherphy();

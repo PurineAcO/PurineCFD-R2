@@ -42,6 +42,8 @@ void wall_jacobi(cc::face_class *face,cc::cell_class* cell,double s);
 void far_jacobi(cc::face_class *face,cc::cell_class* cell,double s);
 // 伪时间谱半径
 double face_lambda(const cc::face_class* f, const cc::cell_class& cell);
+// 组装单元谱半径
+void form_cell_lambda(cc::cell_class& cell);
 // 求出对角线
 void form_diag(cc::cell_class& cell,double inv_dt,double cfl);
 // 复制解向量到缓存
@@ -91,8 +93,8 @@ inline void impl::malloc_vector(){
 inline void impl::clear_mat(){
 #pragma omp parallel for schedule(static)
     allcell icell(i).diag.clear();
-#pragma omp parallel for schedule(static)
-    allcell icell(i).lambda = 0.0;
+// #pragma omp parallel for schedule(static)
+//     allcell icell(i).lambda = 0.0;
     // SA::source_jacobi_clear();
 }
 
@@ -134,9 +136,14 @@ inline double impl::face_lambda(const cc::face_class* f, const cc::cell_class& c
     return (un + f->otphy.a) * f->len + Cn * f->tur.mueff / f->phy.rho * f->len * f->len / cell.vol;
 }
 
+inline void impl::form_cell_lambda(cc::cell_class &cell){
+    cell.lambda = 0.0;
+    allface(cell) cell.lambda += face_lambda(cell.faces[i], cell);
+}
+
 inline void impl::form_diag(cc::cell_class &cell,double inv_dt,double cfl){
     // 格心源对角
-    allface(cell) cell.lambda += face_lambda(cell.faces[i], cell);
+    form_cell_lambda(cell);
     cell.diag += (cell.vol*inv_dt + cell.lambda/cfl) * cc::eyes;
     cc::mat4 far;far.clear();
     // 面上的对角部分
@@ -228,6 +235,9 @@ inline double impl::flow_step(double dt,double cfl){
 }
 
 inline void impl::turbulence_step(double dt, double cfl){
+    right_residual();
+#pragma omp parallel for schedule(static)
+    allcell form_cell_lambda(icell(i));
     SA::malloc_vector();
     const double inv_dt = dt > 0.0 ? 1.0 / dt : 0.0;
 #pragma omp parallel for schedule(static)

@@ -239,7 +239,7 @@ inline bool config::load(const char* path) {
     // 各节的键白名单; io 的 structured 只在网格带结构化信息时出现
     if (!keys(io, {"mesh", "log", "field"}, {"structured", "restart"}) ||
         !keys(solver, {"cfl", "dump_interval", "convergence_interval"},
-              {"max_steps", "end_step", "threads", "urans"}) ||
+              {"max_steps", "end_step", "threads", "urans", "miubl_inf_ratio"}) ||
         !keys(far, {"Ma", "T", "p", "alpha"})) {
         return false;
     }
@@ -296,20 +296,19 @@ inline bool config::load(const char* path) {
     int threads = 0;
     if (solver.contains("threads") && !count(solver, "threads", threads)) { return false; }
     // URANS参数, 缺省项保持config.hpp中的默认值
-    double u_dt = 0.0, u_tol = urans::inner_tol, u_cfl = urans::steady_cfl, u_seed = urans::seed;
+    double u_dt = 0.0, u_tol = urans::inner_tol, u_cfl = urans::steady_cfl;
     int u_inner = urans::inner, u_sweeps = urans::sweeps, u_steady = urans::steady_iters,
         u_wall = urans::wall_interval;
     if (solver.contains("urans")) {
         const Json& u = solver.at("urans");
         if (!keys(u, {"dt", "inner"},
-                  {"inner_tol", "sweeps", "steady_iters", "steady_cfl", "wall_interval", "seed"}) ||
+                  {"inner_tol", "sweeps", "steady_iters", "steady_cfl", "wall_interval"}) ||
             !positive(u, "dt", u_dt) || !count(u, "inner", u_inner) ||
             (u.contains("inner_tol") && !positive(u, "inner_tol", u_tol)) ||
             (u.contains("sweeps") && !count(u, "sweeps", u_sweeps)) ||
             (u.contains("steady_iters") && !count(u, "steady_iters", u_steady)) ||
             (u.contains("steady_cfl") && !positive(u, "steady_cfl", u_cfl)) ||
-            (u.contains("wall_interval") && !count(u, "wall_interval", u_wall)) ||
-            (u.contains("seed") && !number(u, "seed", u_seed))) {
+            (u.contains("wall_interval") && !count(u, "wall_interval", u_wall))) {
             return false;
         }
     }
@@ -317,6 +316,11 @@ inline bool config::load(const char* path) {
     double cfl = 0.0, ma = 0.0, T = 0.0, p = 0.0, alpha = 0.0;
     if (!positive(solver, "cfl", cfl) || !positive(far, "Ma", ma) || !positive(far, "T", T) ||
         !positive(far, "p", p) || !number(far, "alpha", alpha)) {
+        return false;
+    }
+    double miubl_ratio = config::miubl_inf_ratio;
+    if (solver.contains("miubl_inf_ratio") &&
+        !positive(solver, "miubl_inf_ratio", miubl_ratio)) {
         return false;
     }
     if (ma >= 1.0) { return fail("This solver requires a subsonic farfield: 0 < Ma < 1"); }
@@ -336,6 +340,7 @@ inline bool config::load(const char* path) {
     cc::max_step = max_steps;
     cc::end_step = end_step;
     cc::threads = threads;
+    config::miubl_inf_ratio = miubl_ratio;
     fatime::CFL = cfl;
     dump_step = dump_interval;
     conv_step = conv_interval;
@@ -354,7 +359,6 @@ inline bool config::load(const char* path) {
     urans::steady_iters = u_steady;
     urans::steady_cfl = u_cfl;
     urans::wall_interval = u_wall;
-    urans::seed = u_seed;
     return true;
 }
 

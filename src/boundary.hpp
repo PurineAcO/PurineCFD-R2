@@ -27,7 +27,8 @@ inline void noslip_wall_boundary() {
 inline void far_field_boundary() {
     double rho_inf = cc::FAR_DEFINE.otphy.p / (cc::R * cc::FAR_DEFINE.phy.T);
     double a_inf = get_sonic_velocity(cc::FAR_DEFINE.phy.T);
-    double miubl_inf = 3.0 * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) / rho_inf;
+    double miubl_inf = config::miubl_inf_ratio * sutherland::dynamic_viscosity(cc::FAR_DEFINE.phy.T) /
+                       rho_inf;
     for (cc::face_class* far : cc::FarFaces) {
         cc::cell_class* c = cc::boundary_findcell(far);
         cc::vec2 nor = far->length1_nor();

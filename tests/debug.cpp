@@ -7,7 +7,6 @@
 #include "initialize.hpp"
 #include "io.hpp"
 #include "readmesh.hpp"
-#include "udf.hpp"
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -78,7 +77,6 @@ int main(int argc, char** argv) {
             printf("注意: steady_iters=%d, 读入的流场会先被定常迭代改掉\n", urans::steady_iters);
         }
     }
-    if(urans::seed > 0.0) add_seed(urans::seed*std::hypot(cc::FAR_DEFINE.phy.u, cc::FAR_DEFINE.phy.v));
 
     FILE* hist = fopen((cc::fieldpath + "/history.csv").c_str(), "w");
     FILE* wall =

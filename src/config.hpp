@@ -254,6 +254,7 @@ namespace config {
 inline bool load(const char* path = "config.json"); // 读取config.json, 实现在 io.hpp
 inline int dump_step = 1;                           // 场输出间隔
 inline int conv_step = 1;                           // 残差检查间隔
+inline double miubl_inf_ratio = 3.0;                // 远场miubl与层流粘性之比
 } // namespace config
 
 // URANS双时间步参数, 对应config.json中的solver.urans
@@ -265,7 +266,6 @@ inline int sweeps = 4;           // 内迭代GS扫描次数
 inline int steady_iters = 0;     // URANS之前的定常次数,
 inline double steady_cfl = 50.0; // 定常迭代的CFL终值
 inline int wall_interval = 0;    // 壁面Cp输出间隔, 0表示不输出
-inline double seed = 0.0;        // 初场反对称涡扰动幅值
 } // namespace urans
 
 // 结构化网格参数

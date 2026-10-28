@@ -1,13 +1,11 @@
 #include "HALO.hpp"
 #include "classconfig.hpp"
 #include "config.hpp"
-#include "dualtime.hpp"
 #include "geometry.hpp"
 #include "implict.hpp"
 #include "initialize.hpp"
 #include "io.hpp"
 #include "readmesh.hpp"
-#include "udf.hpp"
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -78,8 +76,6 @@ int main(int argc, char** argv) {
             printf("注意: steady_iters=%d, 读入的流场会先被定常迭代改掉\n", urans::steady_iters);
         }
     }
-    if(urans::seed > 0.0) add_seed(urans::seed*std::hypot(cc::FAR_DEFINE.phy.u, cc::FAR_DEFINE.phy.v));
-
     FILE* hist = fopen((cc::fieldpath + "/history.csv").c_str(), "w");
     FILE* wall =
         urans::wall_interval > 0 ? fopen((cc::fieldpath + "/wall_cp.dat").c_str(), "w") : nullptr;
@@ -114,7 +110,7 @@ int main(int argc, char** argv) {
             std::min(urans::steady_cfl, 2.0 + (urans::steady_cfl - 2.0) * it / 200.0) * cfl_scale;
         save_state();
         const double r = impl::flow_step(0.0, cfl);
-        dual::sa_step(0.0, cfl);
+        impl::turbulence_step(0.0, cfl);
         const int nb = bad_cells();
         if (nb > 0) {
             printf("steady %6d 发散: %d 个坏单元, 回退上一流场, CFL x%.4f -> x%.4f\n", it, nb,
@@ -171,7 +167,7 @@ int main(int argc, char** argv) {
             k = 0;
             while (k < urans::inner) {
                 r = impl::flow_step(urans::dt, fatime::CFL);
-                dual::sa_step(urans::dt, fatime::CFL);
+                impl::turbulence_step(urans::dt, fatime::CFL);
                 if (++k == 1)
                     r0 = r;
                 else if (r < urans::inner_tol * r0)

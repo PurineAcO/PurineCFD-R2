@@ -20,7 +20,7 @@ inline void interpolate_mid(cc::face_class* face) {
     face->form_otherphy();
 }
 
-// Barth-Jespersen 限制器: 重构值不超出邻居极值, 保证正性
+// Venkatakrishnan 限制器: 光滑区不限制, 极值附近平滑过渡
 inline cc::vecp limited_phy(const cc::cell_class* cell, const cc::vec2& off) {
     const double c[4] = {cell->phy.rho, cell->phy.u, cell->phy.v, cell->phy.T};
     double lo[4] = {c[0], c[1], c[2], c[3]}, hi[4] = {c[0], c[1], c[2], c[3]};
@@ -38,15 +38,12 @@ inline cc::vecp limited_phy(const cc::cell_class* cell, const cc::vec2& off) {
     const double dk[4] = {d.rho, d.u, d.v, d.T};
     double r[4] = {c[0], c[1], c[2], c[3]};
     for (int k = 0; k < 4; k++) {
-        double psi = 1.0;
-        if (dk[k] > 0.0) {
-            const double m = (hi[k] - c[k]) / dk[k];
-            psi = m < 1.0 ? m : 1.0;
-        } else if (dk[k] < 0.0) {
-            const double m = (lo[k] - c[k]) / dk[k];
-            psi = m < 1.0 ? m : 1.0;
-        }
-        psi = psi > 0.0 ? psi : 0.0;
+        const double dd = std::fabs(dk[k]);
+        if (dd <= 0.0) { continue; }
+        const double dm = dk[k] > 0.0 ? hi[k] - c[k] : c[k] - lo[k];
+        const double eps = 1e-12 * (c[k] * c[k] + 1e-30);
+        const double psi = (dm * dm + 2.0 * dm * dd + eps) /
+                           (dm * dm + dm * dd + 2.0 * dd * dd + eps);
         r[k] = c[k] + psi * dk[k];
     }
     return cc::vecp(r[0], r[1], r[2], r[3]);

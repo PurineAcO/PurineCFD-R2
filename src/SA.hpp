@@ -2,7 +2,6 @@
 
 #include "classconfig.hpp"
 #include "config.hpp"
-#include "dualtime.hpp"
 #include "physic.hpp"
 #include <algorithm>
 #include <cmath>
@@ -114,11 +113,10 @@ inline double SA::source_SA(cc::cell_class& cell) {
     double production = Cb1 * (1 - cell.tur.ft2) * cell.tur.Sbl * cell.phy.rho * cell.tur.miubl;
     double destruction = cell.phy.rho * (Cw1 * cell.tur.fw - Cb1 / kappa / kappa * cell.tur.ft2) *
                          cell.tur.miubl * cell.tur.miubl * (1.0 / (cell.tur.sad * cell.tur.sad));
-    double gradient_source = Cb2 * inv_sigma * cell.phy.rho * cc::dot(cell.tur.miublgrad, cell.tur.miublgrad);
     // 部分论文中引入了可压缩性修正
     double compressible = C5 * cell.phy.rho * cell.tur.miubl * cell.tur.miubl * cell.tur.S2 /
                           (cc::gamma * cc::R * cell.phy.T);
-    return production - destruction + gradient_source - compressible;
+    return production - destruction - compressible;
 }
 
 
@@ -248,8 +246,8 @@ inline void SA::source_jacobi_diag_SA(cc::cell_class &cell,double inv_dt,double 
     cell.tur.diag += cell.phy.rho * cell.lambda / cfl;
     allface(cell){
         cc::face_class* f = cell.faces[i];
-        double s = 2*cell.fnorm[i] - 1;
-        cell.tur.diag += std::max(f->phy.rho*s*f->toface_jacobi(f->phy.u,f->phy.v),0.0);
+        const double mdot = (f->nei[0] == &cell ? 1.0 : -1.0) * f->convect.c;
+        cell.tur.diag += std::max(mdot, 0.0);
         cell.tur.diag += Gamma_eff(cell,f) * f->len / normal_dist(f);
     }
     double chidft2 = -2*Ct4 *cell.tur.chi*cell.tur.chi *cell.tur.ft2;
@@ -278,8 +276,8 @@ inline double SA::right_residual(cc::cell_class& cell){
         cc::face_class* f = cell.faces[i];
         const cc::cell_class* nb = cc::other_cell(f,&cell);
         const double nu_o = nb ? nb->tur.miubl : f->tur.miubl;
-        double s = 2*cell.fnorm[i]-1;
-        res += s*f->phy.rho*f->toface_jacobi(f->phy.u,f->phy.v)*f->tur.miubl;
+        const double mdot = (f->nei[0] == &cell ? 1.0 : -1.0) * f->convect.c;
+        res += mdot * (mdot > 0.0 ? cell.tur.miubl : nu_o);
         res += Gamma_eff(cell, f)*f->len/normal_dist(f)*(cell.tur.miubl - nu_o);
     }
     res -= cell.vol * source_SA(cell);
@@ -292,10 +290,11 @@ inline void SA::solvekernel(int c, int lo, int hi){
     allface(cell){
         cc::face_class* f = cell.faces[i];
         if(f->type != cc::INTER) continue;
-        double s = 2*cell.fnorm[i]-1;
         cc::cell_class* nb = cc::other_cell(f, &cell);
-        double dj = (nb->index-1>=lo && nb->index-1<hi) ? dnu[nb->index-1] : dnuold[nb->index-1];
-        acc += (std::min(s*f->phy.rho*f->otphy.un*f->len,0.0) - Gamma_eff(cell, f)*f->len/normal_dist(f))*dj;
+        const int j = nb->index-1;
+        const double dj = (j>=lo && j<hi) ? dnu[j] : dnuold[j];
+        const double mdot = (f->nei[0] == &cell ? 1.0 : -1.0) * f->convect.c;
+        acc += (std::min(mdot, 0.0) - Gamma_eff(cell, f)*f->len/normal_dist(f))*dj;
     }
     dnu[c] = -acc/cell.tur.diag;
 }

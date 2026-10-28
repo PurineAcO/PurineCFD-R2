@@ -16,6 +16,7 @@ debugres_roe/
 *.log
 *.csv
 *.dat
+cases/
 
 # 结果流水线的临时配置
 _run_*.json
